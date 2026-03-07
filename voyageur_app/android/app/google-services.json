@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "761274145264",
+    "firebase_url": "https://transport-management-dac5a-default-rtdb.firebaseio.com",
+    "project_id": "transport-management-dac5a",
+    "storage_bucket": "transport-management-dac5a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761274145264:android:d7e7900915e7b487222535",
+        "android_client_info": {
+          "package_name": "com.example.chauffeur_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761274145264:android:ec8e31160edf71b2222535",
+        "android_client_info": {
+          "package_name": "com.example.transport_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761274145264:android:dd8f9e99f7cc8dac222535",
+        "android_client_info": {
+          "package_name": "com.example.voyageur_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
