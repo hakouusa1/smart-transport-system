@@ -20,6 +20,8 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
+
+
 class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   StreamSubscription<Position>? _positionSubscription;
@@ -684,6 +686,7 @@ class _ETARow extends StatelessWidget {
     ]);
   }
 }
+
 
 class _MapStat extends StatelessWidget {
   final IconData icon; final String label; final String value; final Color color;
