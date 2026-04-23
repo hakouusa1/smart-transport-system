@@ -7,7 +7,9 @@ class Booking {
   final String passengerName;
   final String lineName;
   final String busName;
-  final String status; // pending, confirmed, cancelled
+  final String status;
+  final double? passengerLat;
+  final double? passengerLng;
   final DateTime createdAt;
 
   Booking({
@@ -18,6 +20,8 @@ class Booking {
     this.lineName = '',
     this.busName = '',
     this.status = 'pending',
+    this.passengerLat,
+    this.passengerLng,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -30,6 +34,8 @@ class Booking {
       lineName: map['lineName'] ?? '',
       busName: map['busName'] ?? '',
       status: map['status'] ?? 'pending',
+      passengerLat: (map['passengerLat'] as num?)?.toDouble(),
+      passengerLng: (map['passengerLng'] as num?)?.toDouble(),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -43,10 +49,13 @@ class Booking {
       'lineName': lineName,
       'busName': busName,
       'status': status,
+      'passengerLat': passengerLat,
+      'passengerLng': passengerLng,
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
 
+  bool get hasLocation => passengerLat != null && passengerLng != null;
   bool get isPending => status == 'pending';
   bool get isConfirmed => status == 'confirmed';
   bool get isCancelled => status == 'cancelled';

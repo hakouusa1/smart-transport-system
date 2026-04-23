@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -58,8 +59,15 @@ class AuthService {
     }
   }
 
-  /// Sign out
+  /// Sign out — removes FCM token so this device stops receiving notifications
   Future<void> signOut() async {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid != null) {
+        await _usersCollection.doc(uid).update({'fcmToken': FieldValue.delete()});
+      }
+      await FirebaseMessaging.instance.deleteToken();
+    } catch (_) {}
     await _auth.signOut();
   }
 

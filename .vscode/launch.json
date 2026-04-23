@@ -1,0 +1,88 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "admin_web",
+            "cwd": "admin_web",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "admin_web (profile mode)",
+            "cwd": "admin_web",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "admin_web (release mode)",
+            "cwd": "admin_web",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "chauffeur_app",
+            "cwd": "chauffeur_app",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "chauffeur_app (profile mode)",
+            "cwd": "chauffeur_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "chauffeur_app (release mode)",
+            "cwd": "chauffeur_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "transport_app",
+            "cwd": "transport_app",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "transport_app (profile mode)",
+            "cwd": "transport_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "transport_app (release mode)",
+            "cwd": "transport_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "voyageur_app",
+            "cwd": "voyageur_app",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "voyageur_app (profile mode)",
+            "cwd": "voyageur_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "voyageur_app (release mode)",
+            "cwd": "voyageur_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

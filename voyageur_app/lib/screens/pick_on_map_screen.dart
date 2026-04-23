@@ -3,14 +3,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/route_service.dart';
-
-const _gBlue = Color(0xFF4285F4);
-const _gDark = Color(0xFF202124);
-const _gSub = Color(0xFF5F6368);
-const _gBorder = Color(0xFFDADCE0);
+import '../theme/app_theme.dart';
+import '../widgets/bus_loading_indicator.dart';
 
 class PickOnMapScreen extends StatefulWidget {
-  final String title; // "Point de départ" or "Point d'arrivée"
+  final String title;
   final Color pinColor;
 
   const PickOnMapScreen({super.key, required this.title, required this.pinColor});
@@ -62,15 +59,13 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
 
   void _confirm() {
     if (_selectedPoint == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Appuyez sur la carte pour choisir un point'),
-          backgroundColor: Colors.orange.shade600,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: const EdgeInsets.all(16),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Appuyez sur la carte pour choisir un point'),
+        backgroundColor: context.appOrange,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ));
       return;
     }
     Navigator.pop(context, {
@@ -86,7 +81,7 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
 
     return Scaffold(
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _gBlue, strokeWidth: 2.5))
+          ? Center(child: BusLoadingIndicator(color: context.appPrimary, strokeWidth: 2.5))
           : Stack(
               children: [
                 // Map
@@ -95,9 +90,7 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
                   options: MapOptions(
                     initialCenter: center,
                     initialZoom: _myPosition != null ? 14 : 12,
-                    onTap: (_, point) {
-                      setState(() => _selectedPoint = point);
-                    },
+                    onTap: (_, point) => setState(() => _selectedPoint = point),
                   ),
                   children: [
                     TileLayer(
@@ -106,33 +99,27 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
                       tileSize: 512,
                       zoomOffset: -1,
                     ),
-                    MarkerLayer(
-                      markers: [
-                        // My position
-                        if (_myPosition != null)
-                          Marker(
-                            point: _myPosition!, width: 22, height: 22,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: _gBlue, shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2.5),
-                                boxShadow: [BoxShadow(color: _gBlue.withValues(alpha: 0.3), blurRadius: 8)],
-                              ),
+                    MarkerLayer(markers: [
+                      if (_myPosition != null)
+                        Marker(
+                          point: _myPosition!, width: 22, height: 22,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: context.appPrimary, shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2.5),
+                              boxShadow: [BoxShadow(color: context.appPrimary.withValues(alpha: 0.3), blurRadius: 8)],
                             ),
                           ),
-                        // Selected point
-                        if (_selectedPoint != null)
-                          Marker(
-                            point: _selectedPoint!, width: 40, height: 50,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.location_on, color: widget.pinColor, size: 40),
-                              ],
-                            ),
+                        ),
+                      if (_selectedPoint != null)
+                        Marker(
+                          point: _selectedPoint!, width: 40, height: 50,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [Icon(Icons.location_on, color: widget.pinColor, size: 40)],
                           ),
-                      ],
-                    ),
+                        ),
+                    ]),
                   ],
                 ),
 
@@ -142,46 +129,58 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
                   child: Container(
                     padding: EdgeInsets.fromLTRB(8, top + 8, 16, 12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
+                      color: context.appCardBg,
+                      boxShadow: [BoxShadow(
+                        color: Colors.black.withValues(alpha: context.isDark ? 0.3 : 0.06),
+                        blurRadius: 8, offset: const Offset(0, 2),
+                      )],
                     ),
-                    child: Row(
-                      children: [
-                        Material(
-                          color: Colors.white, shape: const CircleBorder(), elevation: 2, shadowColor: Colors.black26,
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: () => Navigator.pop(context),
-                            child: const Padding(padding: EdgeInsets.all(10), child: Icon(Icons.arrow_back, size: 22, color: _gDark)),
+                    child: Row(children: [
+                      Material(
+                        color: context.appCardBg,
+                        shape: const CircleBorder(),
+                        elevation: 2,
+                        shadowColor: Colors.black26,
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => Navigator.pop(context),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Icon(Icons.arrow_back, size: 22, color: context.appText),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Container(width: 10, height: 10,
+                      ),
+                      const SizedBox(width: 12),
+                      Container(width: 10, height: 10,
                           decoration: BoxDecoration(color: widget.pinColor, shape: BoxShape.circle)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(widget.title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: _gDark)),
-                        ),
-                      ],
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(widget.title,
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: context.appText))),
+                    ]),
                   ),
                 ),
 
-                // Hint
+                // Hint card
                 if (_selectedPoint == null)
                   Positioned(
                     bottom: 100, left: 20, right: 20,
                     child: Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: Colors.white, borderRadius: BorderRadius.circular(12),
-                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10)],
+                        color: context.appCardBg,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [BoxShadow(
+                          color: Colors.black.withValues(alpha: context.isDark ? 0.3 : 0.1),
+                          blurRadius: 10,
+                        )],
                       ),
                       child: Row(children: [
-                        Icon(Icons.touch_app, color: _gBlue, size: 20),
+                        Icon(Icons.touch_app, color: context.appPrimary, size: 20),
                         const SizedBox(width: 10),
-                        const Expanded(child: Text('Appuyez sur la carte pour choisir le point',
-                          style: TextStyle(fontSize: 13, color: _gSub))),
+                        Expanded(child: Text(
+                          'Appuyez sur la carte pour choisir le point',
+                          style: TextStyle(fontSize: 13, color: context.appSub),
+                        )),
                       ]),
                     ),
                   ),
@@ -191,14 +190,17 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
                   Positioned(
                     bottom: 30, left: 20, right: 20,
                     child: Material(
-                      color: _gBlue, borderRadius: BorderRadius.circular(14), elevation: 3,
+                      color: context.appPrimary,
+                      borderRadius: BorderRadius.circular(14),
+                      elevation: 3,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(14),
                         onTap: _confirm,
                         child: Container(
                           height: 52,
                           alignment: Alignment.center,
-                          child: const Text('Confirmer ce point', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                          child: const Text('Confirmer ce point',
+                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
                         ),
                       ),
                     ),
@@ -209,11 +211,17 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
                   Positioned(
                     bottom: _selectedPoint != null ? 95 : 30, right: 16,
                     child: Material(
-                      color: Colors.white, shape: const CircleBorder(), elevation: 2, shadowColor: Colors.black26,
+                      color: context.appCardBg,
+                      shape: const CircleBorder(),
+                      elevation: 2,
+                      shadowColor: Colors.black26,
                       child: InkWell(
                         customBorder: const CircleBorder(),
                         onTap: () => _mapController.move(_myPosition!, 16),
-                        child: const Padding(padding: EdgeInsets.all(11), child: Icon(Icons.my_location, size: 22, color: _gBlue)),
+                        child: Padding(
+                          padding: const EdgeInsets.all(11),
+                          child: Icon(Icons.my_location, size: 22, color: context.appPrimary),
+                        ),
                       ),
                     ),
                   ),

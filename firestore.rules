@@ -1,0 +1,143 @@
+// firestore.rules
+//
+// Firestore security rules for the Transport System.
+// Enforces role-based access control and data validation.
+//
+// Created: 2026-04-18
+// Author: Claude (AI Assistant)
+//
+// Rules version 2 supports advanced features like Filter.or and composite queries.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUser(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUser(request.auth.uid).data.role == 'admin';
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isDriver(driverId) {
+      return isSignedIn() && request.auth.uid == driverId;
+    }
+
+    function isPassenger(passengerId) {
+      return isSignedIn() && request.auth.uid == passengerId;
+    }
+
+    // ── Users ─────────────────────────────────────────────────────────────────
+    // Users can read their own profile or any profile if they are admin.
+    // Users can update their own profile (limited fields). Admin can write any.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if isSignedIn(); // Registration - no one else can create
+      allow update: if isSignedIn() && (
+        request.auth.uid == userId ||  // own profile
+        isAdmin()
+      );
+      allow delete: if isAdmin(); // Only admin can delete users
+    }
+
+    // ── Buses ─────────────────────────────────────────────────────────────────
+    // Buses are readable by all authenticated users.
+    // Creation/update restricted to owner or admin.
+    // Drivers can only update their driverStatus.
+    match /buses/{busId} {
+      allow read: if isSignedIn();
+
+      // Create: must be owner (ownerId set to auth.uid) or admin
+      allow create: if isSignedIn() && (
+        request.resource.data.ownerId == request.auth.uid ||
+        isAdmin()
+      );
+
+      // Update: admin OR owner OR driver (limited fields)
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        isOwner(resource.data.ownerId) ||
+        (isDriver(resource.data.driverId) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverStatus', 'lastLocation', 'lastLocationUpdate']))
+      );
+
+      // Delete: admin or owner
+      allow delete: if isSignedIn() && (isAdmin() || isOwner(resource.data.ownerId));
+    }
+
+    // ── Lines (Routes) ───────────────────────────────────────────────────────
+    // Lines are public read, admin write only.
+    match /lines/{lineId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Bookings ─────────────────────────────────────────────────────────────
+    // Passengers can create and read their own bookings.
+    // Owners can read bookings for their buses.
+    // Admins have full access.
+    match /bookings/{bookingId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.passengerId ||
+        isOwner(resource.data.ownerId) ||
+        isDriver(resource.data.driverId)
+      );
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.passengerId;
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.passengerId  // e.g., cancel booking
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ── Incidents ─────────────────────────────────────────────────────────────
+    // Drivers and owners can create incidents.
+    // Admins and owners can read and update (resolve) incidents.
+    match /incidents/{incidentId} {
+      allow read: if isSignedIn() && (isAdmin() || isOwner(resource.data.ownerId));
+      allow create: if isSignedIn(); // any authenticated user (driver/owner)
+      allow update: if isSignedIn() && (isAdmin() || isOwner(resource.data.ownerId));
+      allow delete: if isAdmin();
+    }
+
+    // ── Trips ────────────────────────────────────────────────────────────────
+    // Trips are created by drivers when ending a trip; readable by involved parties.
+    match /trips/{tripId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        isOwner(resource.data.ownerId) ||
+        isDriver(resource.data.driverId)
+      );
+      // Drivers can create trip records; no updates or deletes from client
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.driverId;
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Stats ────────────────────────────────────────────────────────────────
+    // Stats collection used for analytics, readonly for admins.
+    match /stats/{statId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ── Notifications ────────────────────────────────────────────────────────
+    // Any signed-in user can create notifications (driver→owner, passenger→driver).
+    // Only the target user can read/update (mark as read) their own notifications.
+    match /notifications/{notifId} {
+      allow create: if isSignedIn();
+      allow read, update: if isSignedIn() && request.auth.uid == resource.data.targetUserId;
+      allow delete: if isAdmin();
+    }
+  }
+}

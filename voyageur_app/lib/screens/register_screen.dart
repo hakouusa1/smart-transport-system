@@ -2,10 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
-
-const _primary = Color(0xFF1565C0);
-const _primaryDark = Color(0xFF0D47A1);
-const _primaryLight = Color(0xFF1976D2);
+import '../theme/app_theme.dart';
+import '../widgets/bus_loading_indicator.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -55,7 +53,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.toString()), backgroundColor: Colors.red,
+        content: Text(e.toString()), backgroundColor: Theme.of(context).colorScheme.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
@@ -72,7 +70,7 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
       child: Scaffold(
         body: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [_primaryDark, _primary, _primaryLight], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: AppTheme.primaryGradient,
           ),
           child: SafeArea(
             child: Column(
@@ -159,10 +157,10 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
                                           SizedBox(width: double.infinity, height: 52,
                                             child: ElevatedButton(
                                               onPressed: _isLoading ? null : _register,
-                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: _primary, elevation: 0,
+                                              style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppTheme.primary, elevation: 0,
                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                                               child: _isLoading
-                                                  ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: _primary))
+                                                  ? const SizedBox(width: 22, height: 22, child: BusLoadingIndicator(strokeWidth: 2.5, color: AppTheme.primary))
                                                   : const Text('Créer mon compte', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                                             ),
                                           ),

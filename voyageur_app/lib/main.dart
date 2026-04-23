@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -6,8 +7,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
+import 'widgets/notif_listener.dart';
 import 'screens/login_screen.dart';
 import 'screens/bus_lines_screen.dart';
+
+import 'theme/app_theme.dart';
+import 'widgets/bus_loading_indicator.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -36,15 +41,18 @@ class VoyageurApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Voyageur',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF4285F4),
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-      ),
-      home: const AuthWrapper(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, themeMode, _) {
+        return MaterialApp(
+          title: 'Voyageur',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
+          themeMode: themeMode,
+          home: const AuthWrapper(),
+        );
+      },
     );
   }
 }
@@ -72,8 +80,7 @@ class AuthWrapper extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            backgroundColor: Color(0xFFF8F9FA),
-            body: Center(child: CircularProgressIndicator(color: Color(0xFF4285F4), strokeWidth: 2.5)),
+            body: Center(child: BusLoadingIndicator(strokeWidth: 2.5)),
           );
         }
 
@@ -84,19 +91,18 @@ class AuthWrapper extends StatelessWidget {
           builder: (context, roleSnap) {
             if (roleSnap.connectionState == ConnectionState.waiting) {
               return const Scaffold(
-                backgroundColor: Color(0xFFF8F9FA),
-                body: Center(child: CircularProgressIndicator(color: Color(0xFF4285F4), strokeWidth: 2.5)),
+                body: Center(child: BusLoadingIndicator(strokeWidth: 2.5)),
               );
             }
 
-            if (roleSnap.data == null) return const BusLinesScreen();
+            if (roleSnap.data == null) return const NotifListener(child: BusLinesScreen());
 
-            FirebaseAuth.instance.signOut();
+            unawaited(FirebaseAuth.instance.signOut());
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text(roleSnap.data!),
-                  backgroundColor: const Color(0xFFEA4335),
+                  backgroundColor: Theme.of(context).colorScheme.error,
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   margin: const EdgeInsets.all(16),

@@ -2,24 +2,18 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import '../models/bus_model.dart';
+import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import 'map_screen.dart';
 import 'pick_on_map_screen.dart';
+import '../theme/app_theme.dart';
+import '../widgets/bus_loading_indicator.dart';
 
-const _mapboxToken =
-    'pk.eyJ1IjoiaGFrb3UwODgiLCJhIjoiY21tZXgxMTJvMDF5eDJyc2hxY2Y3OW1rOCJ9.v74bMi9y79UmP4ixwsuLJw';
-
-const _gBlue = Color(0xFF4285F4);
-const _gGreen = Color(0xFF34A853);
-const _gRed = Color(0xFFEA4335);
-const _gDark = Color(0xFF202124);
-const _gText = Color(0xFF3C4043);
-const _gSub = Color(0xFF5F6368);
-const _gBorder = Color(0xFFDADCE0);
-const _gLight = Color(0xFFF8F9FA);
+const _mapboxToken = config.mapboxToken;
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -36,6 +30,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   LatLng? _departureLatLng;
   LatLng? _arrivalLatLng;
+  LatLng? _myPosition;
 
   List<_Place> _suggestions = [];
   String _activeField = '';
@@ -45,15 +40,12 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _hasSearched = false;
   bool _isLoadingResults = false;
 
-  static const double _matchRadiusKm = 2.0; // 2km from any point on the route
+  static const double _matchRadiusKm = 2.0;
 
   @override
   void initState() {
     super.initState();
-    // Auto focus departure on open
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _departureFocus.requestFocus();
-    });
+    _initUserLocation();
   }
 
   @override
@@ -66,13 +58,72 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
-  // ── Mapbox Geocoding ──
+  Future<void> _initUserLocation() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return;
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+      );
+      if (!mounted) return;
+      final latLng = LatLng(pos.latitude, pos.longitude);
+      setState(() {
+        _myPosition = latLng;
+        _departureLatLng = latLng;
+        _departureController.text = 'Ma position';
+      });
+      _reverseGeocode(latLng, isDeparture: true);
+    } catch (_) {}
+  }
+
+  Future<void> _reverseGeocode(LatLng pos, {required bool isDeparture}) async {
+    try {
+      final url = Uri.parse(
+        'https://api.mapbox.com/geocoding/v5/mapbox.places/${pos.longitude},${pos.latitude}.json'
+            '?access_token=$_mapboxToken&language=fr&limit=1',
+      );
+      final res = await http.get(url);
+      if (res.statusCode == 200 && mounted) {
+        final features = jsonDecode(res.body)['features'] as List;
+        if (features.isNotEmpty) {
+          final name = features.first['text'] as String? ?? 'Ma position';
+          setState(() {
+            if (isDeparture) {
+              _departureController.text = name;
+            } else {
+              _arrivalController.text = name;
+            }
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _resetToMyPosition() {
+    if (_myPosition == null) return;
+    setState(() {
+      _departureLatLng = _myPosition;
+      _departureController.text = 'Ma position';
+      _suggestions = [];
+      _activeField = '';
+    });
+    _reverseGeocode(_myPosition!, isDeparture: true);
+    if (_departureLatLng != null && _arrivalLatLng != null) _search();
+  }
+
   void _onChanged(String query, String field) {
     setState(() => _activeField = field);
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (query.trim().length >= 2) _fetch(query);
-      else setState(() => _suggestions = []);
+      if (query.trim().length >= 2) {
+        _fetch(query);
+      } else {
+        setState(() => _suggestions = []);
+      }
     });
   }
 
@@ -116,8 +167,23 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_departureLatLng != null && _arrivalLatLng != null) _search();
   }
 
-  // ── Match buses ──
-  // Checks if user's departure AND arrival are near the bus route (any point on the route)
+  Future<void> _pickArrivalOnMap() async {
+    FocusScope.of(context).unfocus();
+    final result = await Navigator.push<Map<String, double>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PickOnMapScreen(title: 'Point d\'arrivée', pinColor: context.appRed),
+      ),
+    );
+    if (result != null && mounted) {
+      _arrivalLatLng = LatLng(result['latitude']!, result['longitude']!);
+      _arrivalController.text = 'Ma destination';
+      setState(() {});
+      _reverseGeocode(_arrivalLatLng!, isDeparture: false);
+      if (_departureLatLng != null && _arrivalLatLng != null) _search();
+    }
+  }
+
   Future<void> _search() async {
     if (_departureLatLng == null || _arrivalLatLng == null) return;
     setState(() { _isLoadingResults = true; _hasSearched = true; _matchedBuses = []; });
@@ -132,40 +198,63 @@ class _SearchScreenState extends State<SearchScreen> {
           .toList();
 
       final ids = <String>{};
+      final needsRouteCheck = <Bus>[];
+      const dist = Distance();
 
+      // Fast path: compare user's cities to bus endpoints (covers wilaya-level search).
+      // A 15 km radius handles city-center vs terminal distance in Algerian cities.
       for (final bus in all) {
-        // Get the full route for this bus
-        final from = LatLng(bus.departureLat!, bus.departureLng!);
-        final to = LatLng(bus.arrivalLat!, bus.arrivalLng!);
-
-        final route = await RouteService.getRoute(from, to);
-        if (route == null || route.points.isEmpty) continue;
-
-        // Check if user's departure is near any point on the route
-        final departNear = _isNearRoute(_departureLatLng!, route.points, _matchRadiusKm);
-        // Check if user's arrival is near any point on the route
-        final arriveNear = _isNearRoute(_arrivalLatLng!, route.points, _matchRadiusKm);
-
-        // Also check that departure comes BEFORE arrival on the route
-        // (user is going in the same direction as the bus)
-        if (departNear && arriveNear) {
-          final departIdx = _closestRouteIndex(_departureLatLng!, route.points);
-          final arriveIdx = _closestRouteIndex(_arrivalLatLng!, route.points);
-          // Forward direction: depart index < arrive index
-          // OR reverse: we accept both directions
-          if (departIdx < arriveIdx) {
-            ids.add(bus.busId);
-          }
+        final busDepart = LatLng(bus.departureLat!, bus.departureLng!);
+        final busArrive = LatLng(bus.arrivalLat!, bus.arrivalLng!);
+        final departDist = dist.as(LengthUnit.Kilometer, _departureLatLng!, busDepart);
+        final arriveDist = dist.as(LengthUnit.Kilometer, _arrivalLatLng!, busArrive);
+        if (departDist <= 15.0 && arriveDist <= 15.0) {
+          ids.add(bus.busId);
+        } else {
+          needsRouteCheck.add(bus);
         }
       }
 
-      setState(() { _matchedBuses = all.where((b) => ids.contains(b.busId)).toList(); _isLoadingResults = false; });
-    } catch (_) {
-      setState(() => _isLoadingResults = false);
+      // Slow path: route polyline check for buses not matched above
+      // (handles users at intermediate stops along a route).
+      for (final bus in needsRouteCheck) {
+        final from = LatLng(bus.departureLat!, bus.departureLng!);
+        final to = LatLng(bus.arrivalLat!, bus.arrivalLng!);
+        final route = await RouteService.getRoute(from, to);
+        if (route == null || route.points.isEmpty) continue;
+
+        final departNear = _isNearRoute(_departureLatLng!, route.points, _matchRadiusKm);
+        final arriveNear = _isNearRoute(_arrivalLatLng!, route.points, _matchRadiusKm);
+
+        if (departNear && arriveNear) {
+          final departIdx = _closestRouteIndex(_departureLatLng!, route.points);
+          final arriveIdx = _closestRouteIndex(_arrivalLatLng!, route.points);
+          if (departIdx < arriveIdx) ids.add(bus.busId);
+        }
+      }
+
+      final matched = all.where((b) => ids.contains(b.busId)).toList()
+        ..sort((a, b) {
+          if (a.isOnTrip && !b.isOnTrip) return -1;
+          if (!a.isOnTrip && b.isOnTrip) return 1;
+          return 0;
+        });
+
+      setState(() { _matchedBuses = matched; _isLoadingResults = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingResults = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Erreur lors de la recherche. Veuillez réessayer.'),
+          backgroundColor: context.appRed,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
     }
   }
 
-  /// Check if a point is within radiusKm of any point on the route
   bool _isNearRoute(LatLng point, List<LatLng> route, double radiusKm) {
     const dist = Distance();
     for (final rp in route) {
@@ -174,7 +263,6 @@ class _SearchScreenState extends State<SearchScreen> {
     return false;
   }
 
-  /// Find the index of the closest point on the route
   int _closestRouteIndex(LatLng point, List<LatLng> route) {
     double min = double.infinity;
     int idx = 0;
@@ -199,7 +287,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final top = MediaQuery.of(context).padding.top;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.appBg,
       body: Column(
         children: [
           // ════════════════════════════════════════
@@ -208,92 +296,137 @@ class _SearchScreenState extends State<SearchScreen> {
           Container(
             padding: EdgeInsets.fromLTRB(4, top + 4, 8, 14),
             decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 8, offset: const Offset(0, 2))],
+              color: context.appCardBg,
+              boxShadow: [BoxShadow(
+                color: Colors.black.withValues(alpha: context.isDark ? 0.3 : 0.06),
+                blurRadius: 8, offset: const Offset(0, 2),
+              )],
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Back
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: IconButton(
-                    icon: const Icon(Icons.arrow_back, color: _gText, size: 22),
+                    icon: Icon(Icons.arrow_back, color: context.appText, size: 22),
                     onPressed: () => Navigator.pop(context),
                   ),
                 ),
 
-                // Dots + line
+                // Route dots + line
                 Padding(
                   padding: const EdgeInsets.only(top: 14),
                   child: Column(children: [
                     Container(width: 10, height: 10,
-                        decoration: BoxDecoration(color: _gGreen, shape: BoxShape.circle,
-                            border: Border.all(color: _gGreen.withValues(alpha: 0.3), width: 2))),
-                    Container(width: 2, height: 20, color: _gBorder),
+                        decoration: BoxDecoration(
+                          color: context.appGreen, shape: BoxShape.circle,
+                          border: Border.all(color: context.appGreen.withValues(alpha: 0.3), width: 2),
+                        )),
+                    Container(width: 2, height: 20, color: context.appBorder),
                     Container(width: 10, height: 10,
-                        decoration: BoxDecoration(color: _gRed, shape: BoxShape.circle,
-                            border: Border.all(color: _gRed.withValues(alpha: 0.3), width: 2))),
+                        decoration: BoxDecoration(
+                          color: context.appRed, shape: BoxShape.circle,
+                          border: Border.all(color: context.appRed.withValues(alpha: 0.3), width: 2),
+                        )),
                   ]),
                 ),
                 const SizedBox(width: 10),
 
-                // Fields
+                // Text fields
                 Expanded(
                   child: Column(children: [
-                    // Departure
+                    // ── Departure ──
                     Container(
                       height: 42,
-                      decoration: BoxDecoration(color: _gLight, borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: context.appCardBg2, borderRadius: BorderRadius.circular(8)),
                       child: TextField(
                         controller: _departureController, focusNode: _departureFocus,
                         onChanged: (v) => _onChanged(v, 'departure'),
-                        style: const TextStyle(fontSize: 14, color: _gDark),
+                        style: TextStyle(fontSize: 14, color: context.appText),
                         decoration: InputDecoration(
-                          hintText: 'Point de départ', hintStyle: const TextStyle(color: _gSub, fontSize: 14),
+                          hintText: 'Point de départ',
+                          hintStyle: TextStyle(color: context.appSub, fontSize: 14),
                           border: InputBorder.none, isDense: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                          suffixIcon: _departureController.text.isNotEmpty
-                              ? GestureDetector(
-                              onTap: () { _departureController.clear(); setState(() { _departureLatLng = null; _hasSearched = false; _matchedBuses = []; }); },
-                              child: const Icon(Icons.close, size: 16, color: _gSub))
-                              : null,
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_departureController.text.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    _departureController.clear();
+                                    setState(() { _departureLatLng = null; _hasSearched = false; _matchedBuses = []; });
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Icon(Icons.close, size: 16, color: context.appSub),
+                                  ),
+                                ),
+                              if (_myPosition != null)
+                                GestureDetector(
+                                  onTap: _resetToMyPosition,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 8, left: 2),
+                                    child: Icon(Icons.my_location, size: 16, color: context.appPrimary),
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 6),
-                    // Arrival
+                    // ── Arrival ──
                     Container(
                       height: 42,
-                      decoration: BoxDecoration(color: _gLight, borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(color: context.appCardBg2, borderRadius: BorderRadius.circular(8)),
                       child: TextField(
                         controller: _arrivalController, focusNode: _arrivalFocus,
                         onChanged: (v) => _onChanged(v, 'arrival'),
-                        style: const TextStyle(fontSize: 14, color: _gDark),
+                        style: TextStyle(fontSize: 14, color: context.appText),
                         decoration: InputDecoration(
-                          hintText: 'Point d\'arrivée', hintStyle: const TextStyle(color: _gSub, fontSize: 14),
+                          hintText: 'Point d\'arrivée',
+                          hintStyle: TextStyle(color: context.appSub, fontSize: 14),
                           border: InputBorder.none, isDense: true,
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-                          suffixIcon: _arrivalController.text.isNotEmpty
-                              ? GestureDetector(
-                              onTap: () { _arrivalController.clear(); setState(() { _arrivalLatLng = null; _hasSearched = false; _matchedBuses = []; }); },
-                              child: const Icon(Icons.close, size: 16, color: _gSub))
-                              : null,
+                          suffixIcon: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (_arrivalController.text.isNotEmpty)
+                                GestureDetector(
+                                  onTap: () {
+                                    _arrivalController.clear();
+                                    setState(() { _arrivalLatLng = null; _hasSearched = false; _matchedBuses = []; });
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    child: Icon(Icons.close, size: 16, color: context.appSub),
+                                  ),
+                                ),
+                              GestureDetector(
+                                onTap: _pickArrivalOnMap,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8, left: 2),
+                                  child: Icon(Icons.map_outlined, size: 16, color: context.appPrimary),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ]),
                 ),
 
-                // Swap
+                // Swap button
                 Padding(
                   padding: const EdgeInsets.only(top: 16, left: 4),
                   child: GestureDetector(
                     onTap: _swap,
                     child: Container(
                       width: 36, height: 36,
-                      decoration: BoxDecoration(color: _gLight, borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.swap_vert_rounded, color: _gBlue, size: 20),
+                      decoration: BoxDecoration(color: context.appCardBg2, borderRadius: BorderRadius.circular(10)),
+                      child: Icon(Icons.swap_vert_rounded, color: context.appPrimary, size: 20),
                     ),
                   ),
                 ),
@@ -308,165 +441,211 @@ class _SearchScreenState extends State<SearchScreen> {
             child: _suggestions.isNotEmpty
                 ? _buildSuggestions()
                 : _isLoadingResults
-                ? const Center(child: CircularProgressIndicator(color: _gBlue, strokeWidth: 2.5))
-                : _hasSearched
-                ? _buildResults()
-                : _buildHint(),
+                    ? Center(child: BusLoadingIndicator(color: context.appPrimary, strokeWidth: 2.5))
+                    : _hasSearched
+                        ? _buildResults()
+                        : _buildHint(),
           ),
         ],
       ),
     );
   }
 
-  // ── Suggestions ──
   Widget _buildSuggestions() {
     return ListView.separated(
       padding: EdgeInsets.zero,
       itemCount: _suggestions.length,
-      separatorBuilder: (_, __) => Divider(height: 1, color: _gBorder, indent: 56),
+      separatorBuilder: (_, __) => Divider(height: 1, color: context.appBorder, indent: 56),
       itemBuilder: (_, i) {
         final p = _suggestions[i];
         return ListTile(
           leading: Container(width: 36, height: 36,
-              decoration: BoxDecoration(color: _gLight, shape: BoxShape.circle),
-              child: const Icon(Icons.location_on_outlined, color: _gSub, size: 18)),
-          title: Text(p.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: _gDark)),
-          subtitle: Text(p.fullName, style: const TextStyle(fontSize: 11, color: _gSub), maxLines: 1, overflow: TextOverflow.ellipsis),
+              decoration: BoxDecoration(color: context.appCardBg2, shape: BoxShape.circle),
+              child: Icon(Icons.location_on_outlined, color: context.appSub, size: 18)),
+          title: Text(p.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: context.appText)),
+          subtitle: Text(p.fullName, style: TextStyle(fontSize: 11, color: context.appSub), maxLines: 1, overflow: TextOverflow.ellipsis),
           onTap: () => _selectPlace(p),
         );
       },
     );
   }
 
-  // ── Results ──
   Widget _buildResults() {
     if (_matchedBuses.isEmpty) {
       return Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.directions_bus_outlined, size: 56, color: _gBorder),
+          Icon(Icons.directions_bus_outlined, size: 56, color: context.appBorder),
           const SizedBox(height: 16),
-          const Text('Aucun bus trouvé', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: _gDark)),
+          Text('Aucun bus trouvé', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w500, color: context.appText)),
           const SizedBox(height: 8),
-          const Text('Aucun bus ne dessert ce trajet.\nEssayez des points plus proches.', textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: _gSub, height: 1.4)),
+          Text('Aucun bus ne dessert ce trajet.\nEssayez des points plus proches.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: context.appSub, height: 1.4)),
         ],
       )));
     }
+
+    final allTrips = _matchedBuses.expand((b) => b.activeTrips).toList();
+    final onTripBuses = allTrips.where((t) => t.isEnTrajet).toList();
+    final otherBuses = allTrips.where((t) => !t.isEnTrajet).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Text('${_matchedBuses.length} bus trouvé${_matchedBuses.length > 1 ? 's' : ''}',
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _gDark)),
+          child: Text(
+            '${_matchedBuses.length} bus trouvé${_matchedBuses.length > 1 ? 's' : ''}',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.appText),
+          ),
         ),
         Expanded(
-          child: ListView.separated(
+          child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            itemCount: _matchedBuses.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (_, i) {
-              final bus = _matchedBuses[i];
-              final live = bus.driverStatus == 'on_trip';
-              return Material(
-                color: Colors.white, borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: bus))),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: live ? _gBlue.withValues(alpha: 0.3) : _gBorder)),
-                    child: Row(children: [
-                      Container(width: 44, height: 44,
-                          decoration: BoxDecoration(color: live ? _gBlue.withValues(alpha: 0.1) : _gLight, borderRadius: BorderRadius.circular(12)),
-                          child: Icon(Icons.directions_bus_rounded, color: live ? _gBlue : _gSub, size: 22)),
-                      const SizedBox(width: 12),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(bus.lineName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _gDark)),
-                        const SizedBox(height: 2),
-                        Text(bus.busName.isNotEmpty ? bus.busName : 'N° ${bus.busNumber}', style: const TextStyle(fontSize: 11, color: _gSub)),
-                      ])),
-                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                            decoration: BoxDecoration(color: live ? _gGreen.withValues(alpha: 0.1) : _gLight, borderRadius: BorderRadius.circular(8)),
-                            child: Text(live ? 'En trajet' : bus.statusText,
-                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: live ? _gGreen : _gSub))),
-                        const SizedBox(height: 6),
-                        const Icon(Icons.arrow_forward_ios, size: 12, color: _gBorder),
-                      ]),
-                    ]),
-                  ),
-                ),
-              );
-            },
+            children: [
+              // ── En trajet section ──
+              if (onTripBuses.isNotEmpty) ...[
+                _sectionHeader('En trajet', onTripBuses.length, context.appGreen),
+                const SizedBox(height: 8),
+                ...onTripBuses.map((trip) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _SearchBusCard(trip: trip, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus)))),
+                )),
+                if (otherBuses.isNotEmpty) const SizedBox(height: 8),
+              ],
+              // ── En ligne section ──
+              if (otherBuses.isNotEmpty) ...[
+                _sectionHeader('En ligne', otherBuses.length, context.appOrange),
+                const SizedBox(height: 8),
+                ...otherBuses.map((trip) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _SearchBusCard(trip: trip, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus)))),
+                )),
+              ],
+            ],
           ),
         ),
       ],
     );
   }
 
-  // ── Hint ──
+  Widget _sectionHeader(String label, int count, Color color) {
+    return Row(children: [
+      Container(width: 3, height: 14,
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(width: 8),
+      Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: context.appText)),
+      const SizedBox(width: 6),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text('$count', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+      ),
+    ]);
+  }
+
   Widget _buildHint() {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
           const SizedBox(height: 20),
-
-          // Choose on map buttons
           _MapPickBtn(
             icon: Icons.map_outlined,
-            color: _gGreen,
-            label: 'Choisir le départ sur la carte',
-            onTap: () async {
-              final result = await Navigator.push<Map<String, double>>(
-                context,
-                MaterialPageRoute(builder: (_) => const PickOnMapScreen(title: 'Point de départ', pinColor: _gGreen)),
-              );
-              if (result != null) {
-                _departureLatLng = LatLng(result['latitude']!, result['longitude']!);
-                _departureController.text = '${result['latitude']!.toStringAsFixed(4)}, ${result['longitude']!.toStringAsFixed(4)}';
-                setState(() {});
-                if (_departureLatLng != null && _arrivalLatLng != null) _search();
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          _MapPickBtn(
-            icon: Icons.map_outlined,
-            color: _gRed,
+            color: context.appRed,
             label: 'Choisir l\'arrivée sur la carte',
-            onTap: () async {
-              final result = await Navigator.push<Map<String, double>>(
-                context,
-                MaterialPageRoute(builder: (_) => const PickOnMapScreen(title: 'Point d\'arrivée', pinColor: _gRed)),
-              );
-              if (result != null) {
-                _arrivalLatLng = LatLng(result['latitude']!, result['longitude']!);
-                _arrivalController.text = '${result['latitude']!.toStringAsFixed(4)}, ${result['longitude']!.toStringAsFixed(4)}';
-                setState(() {});
-                if (_departureLatLng != null && _arrivalLatLng != null) _search();
-              }
-            },
+            onTap: _pickArrivalOnMap,
           ),
-
           const SizedBox(height: 30),
-          Icon(Icons.search_rounded, size: 40, color: _gBorder),
+          Icon(Icons.search_rounded, size: 40, color: context.appBorder),
           const SizedBox(height: 10),
-          const Text('Recherchez ou choisissez sur la carte', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: _gDark)),
+          Text('Recherchez votre destination',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: context.appText)),
           const SizedBox(height: 4),
-          const Text('Entrez un nom ou appuyez sur la carte', style: TextStyle(fontSize: 12, color: _gSub)),
+          Text('Entrez un nom ou choisissez sur la carte',
+              style: TextStyle(fontSize: 12, color: context.appSub)),
         ],
       ),
     );
   }
 }
 
-// ── Map pick button ──
+// ════════════════════════════════════════
+// SEARCH RESULT BUS CARD
+// ════════════════════════════════════════
+class _SearchBusCard extends StatelessWidget {
+  final BusTrip trip;
+  final VoidCallback onTap;
+  const _SearchBusCard({required this.trip, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final bus = trip.bus;
+    final live = trip.isEnTrajet;
+    final statusColor = live ? context.appGreen : context.appOrange;
+    final statusLabel = live ? 'En trajet' : 'En ligne';
+    final nextTime = !live ? trip.scheduleTime : null;
+
+    return Material(
+      color: context.appCardBg,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: live ? context.appPrimary.withValues(alpha: 0.3) : context.appBorder),
+          ),
+          child: Row(children: [
+            Container(width: 44, height: 44,
+                decoration: BoxDecoration(
+                  color: live ? context.appPrimary.withValues(alpha: 0.1) : context.appCardBg2,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.directions_bus_rounded, color: live ? context.appPrimary : context.appSub, size: 22)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(trip.displayLineName, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.appText)),
+              const SizedBox(height: 2),
+              Text(bus.busName.isNotEmpty ? bus.busName : 'N° ${bus.busNumber}',
+                  style: TextStyle(fontSize: 11, color: context.appSub)),
+            ])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Container(width: 4, height: 4, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+                  const SizedBox(width: 4),
+                  Text(statusLabel,
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+                ]),
+              ),
+              const SizedBox(height: 5),
+              if (nextTime != null)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.schedule_rounded, size: 10, color: context.appSub),
+                  const SizedBox(width: 3),
+                  Text(nextTime,
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: context.appPrimary)),
+                ])
+              else
+                Icon(Icons.arrow_forward_ios, size: 12, color: context.appBorder),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
 class _MapPickBtn extends StatelessWidget {
   final IconData icon;
   final Color color;
@@ -478,7 +657,8 @@ class _MapPickBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white, borderRadius: BorderRadius.circular(12),
+      color: context.appCardBg,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: onTap,
@@ -486,15 +666,15 @@ class _MapPickBtn extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _gBorder),
+            border: Border.all(color: context.appBorder),
           ),
           child: Row(children: [
             Container(width: 36, height: 36,
                 decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                 child: Icon(icon, color: color, size: 18)),
             const SizedBox(width: 12),
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: _gDark))),
-            Icon(Icons.arrow_forward_ios, size: 14, color: _gBorder),
+            Expanded(child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: context.appText))),
+            Icon(Icons.arrow_forward_ios, size: 14, color: context.appBorder),
           ]),
         ),
       ),

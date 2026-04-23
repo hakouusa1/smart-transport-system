@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import '../app_config.dart' as config;
+import '../data/algeria_stops.dart';
 
-const mapboxToken =
-    'pk.eyJ1IjoiaGFrb3UwODgiLCJhIjoiY21tZXgxMTJvMDF5eDJyc2hxY2Y3OW1rOCJ9.v74bMi9y79UmP4ixwsuLJw';
+const mapboxToken = config.mapboxToken;
 
 class RouteResult {
   final List<LatLng> points;
@@ -17,7 +18,6 @@ class RouteResult {
   });
 
   int get etaMinutes => (durationSeconds / 60).round();
-
   double get distanceKm => distanceMeters / 1000;
 
   String get etaText {
@@ -29,35 +29,35 @@ class RouteResult {
   }
 
   String get distanceText {
-    if (distanceMeters < 1000) {
-      return '${distanceMeters.toStringAsFixed(0)} m';
-    }
+    if (distanceMeters < 1000) return '${distanceMeters.toStringAsFixed(0)} m';
     return '${distanceKm.toStringAsFixed(1)} km';
   }
 }
 
 class RouteService {
-  /// Mapbox tile URL - light style
+  /// Mapbox tile URL
   static String get tileUrl =>
-      'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}@2x?access_token=$mapboxToken';
-
-  /// Mapbox tile URL - dark style (modern)
-  static String get darkTileUrl =>
-      'https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}@2x?access_token=$mapboxToken';
-
-  /// Mapbox tile URL - navigation style (clear roads)
-  static String get navTileUrl =>
       'https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/tiles/{z}/{x}/{y}@2x?access_token=$mapboxToken';
 
-  /// Get route from Mapbox: points + duration + distance
-  /// Uses steps=true for detailed geometry following every road curve
+  static final Map<String, _CachedRoute> _cache = {};
+
+  static String _key(LatLng a, LatLng b) =>
+      '${a.latitude.toStringAsFixed(4)},${a.longitude.toStringAsFixed(4)}'
+      '->${b.latitude.toStringAsFixed(4)},${b.longitude.toStringAsFixed(4)}';
+
+  /// Get route from Mapbox with FULL road-following geometry
+  /// overview=full returns every curve and turn on the road
   static Future<RouteResult?> getRoute(LatLng from, LatLng to) async {
+    final key = _key(from, to);
+    final hit = _cache[key];
+    if (hit != null && !hit.isExpired) return hit.result;
+
     try {
       final url = Uri.parse(
         'https://api.mapbox.com/directions/v5/mapbox/driving/'
             '${from.longitude},${from.latitude};'
             '${to.longitude},${to.latitude}'
-            '?overview=false&steps=true&geometries=geojson&access_token=$mapboxToken',
+            '?overview=full&geometries=geojson&access_token=$mapboxToken',
       );
 
       final response = await http.get(url);
@@ -68,41 +68,28 @@ class RouteService {
 
         if (routes != null && routes.isNotEmpty) {
           final route = routes[0];
-
           final duration = (route['duration'] as num?)?.toDouble() ?? 0;
           final distance = (route['distance'] as num?)?.toDouble() ?? 0;
 
-          // Collect ALL step geometries for maximum detail
-          final List<LatLng> allPoints = [];
-          final legs = route['legs'] as List<dynamic>?;
+          // overview=full gives the complete geometry in route['geometry']
+          final coords = route['geometry']['coordinates'] as List<dynamic>;
+          final points = <LatLng>[];
 
-          if (legs != null) {
-            for (final leg in legs) {
-              final steps = leg['steps'] as List<dynamic>?;
-              if (steps != null) {
-                for (final step in steps) {
-                  final coords =
-                  step['geometry']['coordinates'] as List<dynamic>;
-                  for (final c in coords) {
-                    final point = LatLng(
-                      (c[1] as num).toDouble(),
-                      (c[0] as num).toDouble(),
-                    );
-                    if (allPoints.isEmpty || allPoints.last != point) {
-                      allPoints.add(point);
-                    }
-                  }
-                }
-              }
-            }
+          for (final c in coords) {
+            points.add(LatLng(
+              (c[1] as num).toDouble(),
+              (c[0] as num).toDouble(),
+            ));
           }
 
-          if (allPoints.isNotEmpty) {
-            return RouteResult(
-              points: allPoints,
+          if (points.isNotEmpty) {
+            final result = RouteResult(
+              points: points,
               durationSeconds: duration,
               distanceMeters: distance,
             );
+            _cache[key] = _CachedRoute(result);
+            return result;
           }
         }
       }
@@ -111,5 +98,127 @@ class RouteService {
     } catch (e) {
       return null;
     }
+  }
+}
+
+class _CachedRoute {
+  final RouteResult result;
+  final DateTime _at;
+  _CachedRoute(this.result) : _at = DateTime.now();
+  bool get isExpired => DateTime.now().difference(_at).inMinutes >= 10;
+}
+
+// ── Route stop model ───────────────────────────────────────────────────────
+
+class RouteStop {
+  final String name;
+  final double lat;
+  final double lng;
+
+  /// Index of the closest point on the full route polyline.
+  final int routeIndex;
+
+  const RouteStop({
+    required this.name,
+    required this.lat,
+    required this.lng,
+    required this.routeIndex,
+  });
+
+  LatLng get latLng => LatLng(lat, lng);
+}
+
+// ── Stop detection ─────────────────────────────────────────────────────────
+
+extension StopDetection on RouteService {
+  /// Normalise a place name for fuzzy matching:
+  /// lowercase + strip French diacritics + collapse punctuation to spaces.
+  static String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'[àâä]'), 'a')
+      .replaceAll(RegExp(r'[éèêë]'), 'e')
+      .replaceAll(RegExp(r'[îï]'), 'i')
+      .replaceAll(RegExp(r'[ôö]'), 'o')
+      .replaceAll(RegExp(r'[ùûü]'), 'u')
+      .replaceAll('ç', 'c')
+      .replaceAll(RegExp(r"['\-]"), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  /// Resolves admin-entered stop names (plain strings, possibly with
+  /// typographic variants) to [RouteStop] objects positioned on [routePoints].
+  ///
+  /// Matching strategy (in priority order):
+  ///  1. Exact normalised match  ("Lakhdaria" == "Lakhdaria")
+  ///  2. One name starts with the other  ("Ain Bessam" ≈ "Aïn Bessam")
+  ///  3. One name contains the other
+  static List<RouteStop> resolveAdminStops({
+    required List<String> stopNames,
+    required List<LatLng> routePoints,
+    required double departureLat,
+    required double departureLng,
+    required double arrivalLat,
+    required double arrivalLng,
+  }) {
+    if (stopNames.isEmpty || routePoints.isEmpty) return [];
+
+    const d = Distance();
+    final departure = LatLng(departureLat, departureLng);
+    final arrival = LatLng(arrivalLat, arrivalLng);
+    final result = <RouteStop>[];
+
+    for (final rawName in stopNames) {
+      final name = rawName.trim();
+      if (name.isEmpty) continue;
+      final nName = _norm(name);
+
+      // Lookup in the database (fuzzy, 3-tier)
+      AlgeriaStop? matched;
+      for (final s in kAlgeriaStops) {
+        if (_norm(s.name) == nName) { matched = s; break; }
+      }
+      if (matched == null) {
+        for (final s in kAlgeriaStops) {
+          final ns = _norm(s.name);
+          if (ns.startsWith(nName) || nName.startsWith(ns)) { matched = s; break; }
+        }
+      }
+      if (matched == null) {
+        for (final s in kAlgeriaStops) {
+          final ns = _norm(s.name);
+          if (ns.contains(nName) || nName.contains(ns)) { matched = s; break; }
+        }
+      }
+
+      // If still not found, keep the name but can't place it on the map
+      if (matched == null) continue;
+
+      final pt = LatLng(matched.lat, matched.lng);
+
+      // Skip if too close to departure or arrival (8 km)
+      if (d.as(LengthUnit.Meter, pt, departure) < 8000) continue;
+      if (d.as(LengthUnit.Meter, pt, arrival) < 8000) continue;
+
+      // Find closest point on the route polyline
+      double minDist = double.infinity;
+      int bestIdx = -1;
+      for (int i = 0; i < routePoints.length; i++) {
+        final v = d.as(LengthUnit.Meter, pt, routePoints[i]);
+        if (v < minDist) { minDist = v; bestIdx = i; }
+      }
+
+      if (bestIdx >= 0 && bestIdx > 2 && bestIdx < routePoints.length - 3) {
+        result.add(RouteStop(
+          name: matched.name, // canonical name from the database
+          lat: matched.lat,
+          lng: matched.lng,
+          routeIndex: bestIdx,
+        ));
+      }
+    }
+
+    // Sort by position along the route
+    result.sort((a, b) => a.routeIndex.compareTo(b.routeIndex));
+    return result;
   }
 }

@@ -19,6 +19,10 @@ class Bus {
   final double? arrivalLat;
   final double? arrivalLng;
 
+  final DateTime? onlineAt;
+  final List<String> tripSchedules;
+  final int currentTripIndex;
+
   Bus({
     required this.busId,
     required this.lineName,
@@ -33,6 +37,9 @@ class Bus {
     this.departureLng,
     this.arrivalLat,
     this.arrivalLng,
+    this.onlineAt,
+    this.tripSchedules = const [],
+    this.currentTripIndex = 0,
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory Bus.fromMap(Map<String, dynamic> map) {
@@ -50,6 +57,9 @@ class Bus {
       departureLng: (map['departureLng'] as num?)?.toDouble(),
       arrivalLat: (map['arrivalLat'] as num?)?.toDouble(),
       arrivalLng: (map['arrivalLng'] as num?)?.toDouble(),
+      onlineAt: (map['onlineAt'] as Timestamp?)?.toDate(),
+      tripSchedules: List<String>.from(map['tripSchedules'] ?? []),
+      currentTripIndex: (map['currentTripIndex'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -68,6 +78,7 @@ class Bus {
       'departureLng': departureLng,
       'arrivalLat': arrivalLat,
       'arrivalLng': arrivalLng,
+      if (onlineAt != null) 'onlineAt': Timestamp.fromDate(onlineAt!),
     };
   }
 
@@ -87,4 +98,39 @@ class Bus {
   bool get isOnline => driverStatus == 'online' || driverStatus == 'on_trip';
   bool get hasDeparture => departureLat != null && departureLng != null;
   bool get hasArrival => arrivalLat != null && arrivalLng != null;
+  List<String> get allSchedules => tripSchedules;
+
+  String? get nextSchedule {
+    if (tripSchedules.isEmpty) return null;
+    final idx = currentTripIndex % tripSchedules.length;
+    return tripSchedules[idx];
+  }
+
+  Bus copyWith({
+    String? driverStatus,
+    double? departureLat,
+    double? departureLng,
+    double? arrivalLat,
+    double? arrivalLng,
+    int? currentTripIndex,
+  }) {
+    return Bus(
+      busId: busId,
+      lineName: lineName,
+      busName: busName,
+      busNumber: busNumber,
+      isActive: isActive,
+      createdAt: createdAt,
+      ownerId: ownerId,
+      driverId: driverId,
+      driverStatus: driverStatus ?? this.driverStatus,
+      departureLat: departureLat ?? this.departureLat,
+      departureLng: departureLng ?? this.departureLng,
+      arrivalLat: arrivalLat ?? this.arrivalLat,
+      arrivalLng: arrivalLng ?? this.arrivalLng,
+      onlineAt: onlineAt,
+      tripSchedules: tripSchedules,
+      currentTripIndex: currentTripIndex ?? this.currentTripIndex,
+    );
+  }
 }

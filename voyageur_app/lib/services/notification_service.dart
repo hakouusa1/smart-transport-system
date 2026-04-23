@@ -53,6 +53,8 @@ class NotificationService {
     });
   }
 
+  static Future<void> saveTokenNow() => _saveToken();
+
   /// Save FCM token to Firestore
   static Future<void> _saveToken() async {
     final token = await _messaging.getToken();

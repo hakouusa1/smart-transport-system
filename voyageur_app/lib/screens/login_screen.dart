@@ -2,11 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 import 'register_screen.dart';
-
-const _primary = Color(0xFF1565C0);
-const _primaryDark = Color(0xFF0D47A1);
-const _primaryLight = Color(0xFF1976D2);
+import '../widgets/bus_loading_indicator.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -45,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await _authService.signIn(email: _emailController.text, password: _passwordController.text);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.toString()), backgroundColor: Colors.red,
+        content: Text(e.toString()), backgroundColor: Theme.of(context).colorScheme.error,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: const EdgeInsets.all(16),
@@ -62,7 +60,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       child: Scaffold(
         body: Container(
           decoration: const BoxDecoration(
-            gradient: LinearGradient(colors: [_primaryDark, _primary, _primaryLight], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: AppTheme.primaryGradient,
           ),
           child: SafeArea(
             child: Center(
@@ -109,10 +107,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 SizedBox(width: double.infinity, height: 52,
                                     child: ElevatedButton(
                                       onPressed: _isLoading ? null : _login,
-                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: _primary, elevation: 0,
+                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppTheme.primary, elevation: 0,
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
                                       child: _isLoading
-                                          ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5, color: _primary))
+                                          ? const SizedBox(width: 22, height: 22, child: BusLoadingIndicator(strokeWidth: 2.5, color: AppTheme.primary))
                                           : const Text('Se connecter', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                                     )),
                               ]),
@@ -161,7 +159,7 @@ class _GlassField extends StatelessWidget {
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.6), width: 2)),
         errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFFF6B6B))),
         focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 2)),
-        errorStyle: const TextStyle(color: Color(0xFFFF6B6B)),
+        errorStyle: const TextStyle(color: Color(0xFFFF6B6B)), // bright on gradient — intentional
         filled: true, fillColor: Colors.white.withValues(alpha: 0.08),
       ),
     );

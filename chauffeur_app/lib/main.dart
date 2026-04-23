@@ -1,16 +1,28 @@
+import 'package:chauffeur_app/widgets/notif_listener_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
-import 'screens/login_screen.dart';
-import 'screens/driver_dashboard_screen.dart';
+import 'screens/login_page.dart';
+import 'screens/driver_dashboard_page.dart';
+import 'screens/splash_screen.dart';
+import 'services/notification_service.dart';
+import 'theme_notifier.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  await NotificationService.init();
   runApp(const ChauffeurApp());
 }
 
@@ -19,38 +31,16 @@ class ChauffeurApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Chauffeur',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF1565C0),
-        useMaterial3: true,
-        brightness: Brightness.light,
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 0,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          filled: true,
-          fillColor: Colors.grey.shade50,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 14,
-          ),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-        ),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (_, mode, __) => MaterialApp(
+        title: 'Chauffeur',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: mode,
+        home: SplashScreen(nextScreen: const AuthWrapper()),
       ),
-      home: const AuthWrapper(),
     );
   }
 }
@@ -58,7 +48,6 @@ class ChauffeurApp extends StatelessWidget {
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
-  /// Check if current user has the "driver" role
   Future<bool> _checkDriverRole(String uid) async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -86,10 +75,9 @@ class AuthWrapper extends StatelessWidget {
         }
 
         if (!snapshot.hasData || snapshot.data == null) {
-          return const LoginScreen();
+          return const LoginPage();
         }
 
-        // Check role before showing Dashboard
         return FutureBuilder<bool>(
           future: _checkDriverRole(snapshot.data!.uid),
           builder: (context, roleSnapshot) {
@@ -100,11 +88,11 @@ class AuthWrapper extends StatelessWidget {
             }
 
             if (roleSnapshot.data == true) {
-              return const DriverDashboardScreen();
+              return const NotifListener(child: DriverDashboardPage());
             }
 
             FirebaseAuth.instance.signOut();
-            return const LoginScreen();
+            return const LoginPage();
           },
         );
       },
