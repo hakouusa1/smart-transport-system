@@ -1,0 +1,59 @@
+name: transporteur_app
+description: Transport Management System - Owner App
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  firebase_core: ^3.8.1
+  firebase_auth: ^5.3.4
+  cloud_firestore: ^5.6.0
+  uuid: ^4.5.1
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  http: ^1.2.1
+  firebase_database: ^11.3.3
+  intl: ^0.20.2
+  firebase_messaging: ^15.1.6
+  flutter_local_notifications: ^17.2.4
+  supabase_flutter: ^2.9.0
+  image_picker: ^1.1.2
+  shared_preferences: ^2.3.5
+  fl_chart: ^0.69.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.1
+  flutter_native_splash: ^2.4.3
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo.png"
+  web:
+    generate: true
+    image_path: "assets/images/logo.png"
+
+flutter_native_splash:
+  color: "#0D47A1"
+  image: assets/images/logo_splash.png
+  android: true
+  ios: true
+  android_gravity: center
+  ios_content_mode: center
+  android_12:
+    color: "#0D47A1"
+    image: assets/images/logo_splash.png
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
