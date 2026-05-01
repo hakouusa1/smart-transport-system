@@ -1,0 +1,554 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="NONE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="3f436353-5b1b-46a5-abc8-483aa20a82b5" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/admin_web/lib/models/line_stop_model.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/admin_web/lib/services/geocoding_service.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-mdpi/android12splash.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-night-mdpi/android12splash.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xhdpi/android12splash.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xxxhdpi/android12splash.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/chauffeur_app/assets/images/massar_logo.webp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/lib/main.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/lib/main.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/lib/utils/Decoder.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/lib/utils/basename.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/lib/utils/parseParams.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@fastify/busboy/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/app-check-interop-types/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/app-check-interop-types/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/app-types/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/component/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database-compat/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database-compat/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database-types/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database-types/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database-types/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/index.cjs.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/index.cjs.js.map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/index.esm5.js.map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/index.node.cjs.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/index.standalone.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/test/compound_write.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/test/deno.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/test/node.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/test/parser.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/test/path.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/database/dist/test/websocketconnection.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/index.esm2017.js.map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/index.esm5.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/index.esm5.js.map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/index.node.cjs.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/index.node.cjs.js.map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/test/base64.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/test/compat.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/test/deepCopy.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/test/environments.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/test/exponential_backoff.test.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/tsdoc-metadata.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/dist/util-public.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@firebase/util/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@google-cloud/firestore/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@google-cloud/projectify/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@google-cloud/projectify/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@google-cloud/storage/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@google-cloud/storage/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/proto/channelz.proto" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/proto/xds/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/auth-context.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/backoff-timeout.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/call-number.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/call.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/channel-credentials.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/channel-options.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/channelz.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/client-interceptors.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/compression-filter.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/control-plane-status.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/duration.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/filter.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/BoolRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/BytesRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/DoubleRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/DurationRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/EnumRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/FieldRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/Int32Rules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/MapRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/generated/validate/StringRules.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/http_proxy.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/index.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/internal-channel.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/load-balancer-child-handler.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/load-balancer-round-robin.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/make-client.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/object-stream.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/picker.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/priority-queue.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/resolver-ip.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/resolver-uds.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/retrying-call.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/server-credentials.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/server-interceptors.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/service-config.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/single-subchannel-channel.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/subchannel-address.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/grpc-js/src/uri-parser.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@grpc/proto-loader/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@nodable/entities/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@nodable/entities/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@nodable/entities/src/EntityDecoder.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@nodable/entities/src/EntityEncoder.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@nodable/entities/src/entityTries.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/body-parser/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/body-parser/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/express/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/express/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/express/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/express/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/qs/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/range-parser/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/range-parser/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/range-parser/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/request/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/send/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/@types/serve-static/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/agent-base/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/agent-base/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/ansi-styles/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/ansi-styles/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/ansi-styles/license" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/ansi-styles/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/bench.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/async.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/defer.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/iterate.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/readable_parallel.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/readable_serial.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/readable_serial_ordered.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/lib/streamify.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/serial.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/asynckit/stream.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/body-parser/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/actualApply.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/actualApply.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/functionApply.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/functionCall.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/reflectApply.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/call-bind-apply-helpers/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/combined-stream/lib/combined_stream.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/combined-stream/yarn.lock" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/cookie/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/duplexify/.travis.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/duplexify/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/duplexify/example.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/es-define-property/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/es-define-property/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/es-define-property/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/es-define-property/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/es-define-property/test/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/es-define-property/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/escalade/index.d.mts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/escalade/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/escalade/sync/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/escalade/sync/index.mjs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/escape-html/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/escape-html/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/express/Readme.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/express/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/extend/.editorconfig" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/extend/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/extend/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/fast-xml-builder/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/fast-xml-builder/lib/fxb.d.cts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/fast-xml-builder/lib/fxb.min.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/fast-xml-builder/lib/fxb.min.js.map" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/finalhandler/HISTORY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/finalhandler/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/form-data/License" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/form-data/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/function-bind/.nycrc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/function-bind/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/function-bind/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/function-bind/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/function-bind/implementation.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/function-bind/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/gaxios/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/gaxios/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/gaxios/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/get-caller-file/LICENSE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/get-caller-file/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/google-auth-library/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/google-gax/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/gopd/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/gopd/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/has-symbols/.nycrc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/has-symbols/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/has-symbols/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/has-symbols/shams.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/http-parser-js/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/http-parser-js/http-parser.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/jose/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/json-bigint/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/json-bigint/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/json-bigint/lib/parse.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/json-bigint/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.clonedeep/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.clonedeep/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.isboolean/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.isboolean/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.isplainobject/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.isstring/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.isstring/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/lodash.isstring/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/mime-db/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/mime-db/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/negotiator/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/negotiator/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/negotiator/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/negotiator/lib/charset.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/negotiator/lib/language.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/negotiator/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-hash/dist/object_hash.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-hash/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/.nycrc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/example/all.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/example/circular.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/example/fn.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/example/inspect.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/readme.markdown" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/test-core-js.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/object-inspect/util.inspect.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/on-finished/HISTORY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/on-finished/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/once/once.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/p-limit/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/p-limit/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/path-expression-matcher/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/path-expression-matcher/lib/pem.d.cts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/path-expression-matcher/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/proto3-json-serializer/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/qs/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/qs/eslint.config.mjs" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/qs/test/empty-keys-cases.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/qs/test/parse.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/qs/test/utils.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/readable-stream/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/readable-stream/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/readable-stream/readable-browser.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/readable-stream/readable.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/retry-request/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/retry-request/license" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/retry-request/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/semver/bin/semver.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/semver/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/semver/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/semver/range.bnf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/serve-static/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/serve-static/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/serve-static/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-list/.github/FUNDING.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-list/.nycrc" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-list/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-list/list.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/.github/FUNDING.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/index.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/test/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel-weakmap/tsconfig.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel/.editorconfig" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel/.github/FUNDING.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/side-channel/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/statuses/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/statuses/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/statuses/codes.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/statuses/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/stream-shift/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/strip-ansi/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/strip-ansi/readme.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/strnum/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/strnum/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/stubs/index.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/stubs/readme.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/stubs/test.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/tslib/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/tslib/SECURITY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/tslib/tslib.d.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/tslib/tslib.html" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/tslib/tslib.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/unpipe/HISTORY.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/unpipe/LICENSE" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/unpipe/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-driver/LICENSE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-driver/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-driver/lib/websocket/streams.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-driver/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-extensions/CHANGELOG.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-extensions/LICENSE.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-extensions/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-extensions/lib/parser.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-extensions/lib/pipeline/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/websocket-extensions/lib/pipeline/pledge.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/yallist/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/node_modules/yallist/package.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/functions/package-lock.json" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/test.js" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/analyze_out.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/assets/images/4394abdc-052b-4b72-a1f3-222a50ae6d7d_removalai_preview.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/assets/images/massar_logo.webp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/assets/images/massar_logo_splash.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/assets/images/massar_logo_splash_android12.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/assets/launcher_icons/logo.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/app_settings_notifier.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/constants.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/l10n/app_localizations.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/locale_notifier.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/screens/change_plan_screen.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/screens/subscription_history_screen.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/screens/trip_detail_screen.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/services/firebase_service.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/transport_app/lib/utils/profit_calculator.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voyageur_app/assets/images/massar_logo.webp" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voyageur_app/assets/images/massar_logo_splash.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voyageur_app/assets/images/massar_logo_splash_android12.png" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/all_buses_list_screen.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/price_calculation_screen.dart" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/voyageur_app/lib/widgets/ticket_card_shape.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.kilo/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/.kilo/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.kilo/plans/1775113517445-stellar-planet.md" beforeDir="false" afterPath="$PROJECT_DIR$/.kilo/plans/1775113517445-stellar-planet.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.kilo/plans/1775116201512-calm-eagle.md" beforeDir="false" afterPath="$PROJECT_DIR$/.kilo/plans/1775116201512-calm-eagle.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.kilo/plans/1775124421579-tidy-falcon.md" beforeDir="false" afterPath="$PROJECT_DIR$/.kilo/plans/1775124421579-tidy-falcon.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.kilo/plans/1775234664313-proud-rocket.md" beforeDir="false" afterPath="$PROJECT_DIR$/.kilo/plans/1775234664313-proud-rocket.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/launch.json" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/launch.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.vscode/settings.json" beforeDir="false" afterPath="$PROJECT_DIR$/.vscode/settings.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ARCHITECTURE.md" beforeDir="false" afterPath="$PROJECT_DIR$/ARCHITECTURE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/BUG_REPORTS.md" beforeDir="false" afterPath="$PROJECT_DIR$/BUG_REPORTS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CODE_RULES.md" beforeDir="false" afterPath="$PROJECT_DIR$/CODE_RULES.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/IMPLEMENTATION_PLAN.md" beforeDir="false" afterPath="$PROJECT_DIR$/IMPLEMENTATION_PLAN.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/admin_web/lib/screens/admin_shell_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/admin_web/lib/screens/admin_shell_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/admin_web/lib/screens/lines_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/admin_web/lib/screens/lines_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/admin_web/lib/services/admin_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/admin_web/lib/services/admin_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/admin_web/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/admin_web/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/admin_web/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/admin_web/pubspec.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-hdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-hdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-mdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-mdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-v21/launch_background.xml" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-v21/launch_background.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xxhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xxhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xxxhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable-xxxhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable/launch_background.xml" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/drawable/launch_background.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/values-night-v31/styles.xml" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/values-night-v31/styles.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/values-v31/styles.xml" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/android/app/src/main/res/values-v31/styles.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/assets/images/logo.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Base.lproj/LaunchScreen.storyboard" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/ios/Runner/Base.lproj/LaunchScreen.storyboard" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/lib/screens/splash_screen.dart" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/lib/widgets/tariqi_logo.dart" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-1x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-1x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-4x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/dark-4x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-1x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-1x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-4x.png" beforeDir="false" afterPath="$PROJECT_DIR$/chauffeur_app/web/splash/img/light-4x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.rules.json" beforeDir="false" afterPath="$PROJECT_DIR$/database.rules.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/firebase.json" beforeDir="false" afterPath="$PROJECT_DIR$/firebase.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/firestore.indexes.json" beforeDir="false" afterPath="$PROJECT_DIR$/firestore.indexes.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/.temp/linked-project.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/.temp/linked-project.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/migrations/20260419000001_fcm_setup.sql" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/migrations/20260419000001_fcm_setup.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/migrations/20260419000002_pg_cron.sql" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/migrations/20260419000002_pg_cron.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-hdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-hdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-hdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-hdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-mdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-mdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-mdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-mdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-hdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-hdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-mdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-mdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-xhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-xhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-xxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-xxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-xxxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-night-xxxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-v21/background.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-v21/background.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxxhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable-xxxhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable/background.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/drawable/background.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/values-night-v31/styles.xml" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/values-night-v31/styles.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/android/app/src/main/res/values-v31/styles.xml" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/android/app/src/main/res/values-v31/styles.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/assets/images/logo.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/app_config.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/app_config.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/main.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/main.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/models/bus_model.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/models/bus_model.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/add_bus_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/add_bus_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/alerts_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/alerts_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/bus_list_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/bus_list_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/bus_tracking_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/bus_tracking_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/buses_en_trajet_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/buses_en_trajet_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/dashboard_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/dashboard_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/login_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/login_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/main_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/main_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/pick_location_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/pick_location_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/profile_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/profile_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/register_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/register_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/statistics_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/statistics_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/screens/subscription_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/screens/subscription_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/services/alert_notification_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/services/alert_notification_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/services/bus_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/services/bus_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/services/route_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/services/route_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/services/supabase_storage_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/services/supabase_storage_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/widgets/bus_card.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/widgets/bus_card.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/widgets/staggered_list_item.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/widgets/staggered_list_item.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/lib/widgets/tariqi_logo.dart" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/lib/widgets/tariqi_logo.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/macos/Flutter/GeneratedPluginRegistrant.swift" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/macos/Flutter/GeneratedPluginRegistrant.swift" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/pubspec.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/dark-1x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/dark-1x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/dark-2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/dark-2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/dark-3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/dark-3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/dark-4x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/dark-4x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/light-1x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/light-1x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/light-2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/light-2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/light-3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/light-3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/transport_app/web/splash/img/light-4x.png" beforeDir="false" afterPath="$PROJECT_DIR$/transport_app/web/splash/img/light-4x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-hdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-hdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-hdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-hdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-mdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-mdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-mdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-mdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-hdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-hdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-mdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-mdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-xhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-xhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-xxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-xxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-xxxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-night-xxxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-v21/background.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-v21/background.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxxhdpi/android12splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxxhdpi/android12splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxxhdpi/splash.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable-xxxhdpi/splash.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable/background.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/drawable/background.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/values-night-v31/styles.xml" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/values-night-v31/styles.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/values-v31/styles.xml" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/android/app/src/main/res/values-v31/styles.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/assets/images/logo.png" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchBackground.imageset/background.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/ios/Runner/Assets.xcassets/LaunchImage.imageset/LaunchImage@3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/app_config.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/app_config.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/data/algeria_stops.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/data/algeria_stops.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/main.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/main.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/models/bus_model.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/models/bus_model.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/all_buses_map_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/all_buses_map_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/bus_lines_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/bus_lines_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/login_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/login_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/map_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/map_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/my_bookings_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/my_bookings_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/pick_on_map_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/pick_on_map_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/register_screen.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/register_screen.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/screens/search_screen_page.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/screens/search_screen_page.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/services/auth_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/services/auth_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/services/booking_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/services/booking_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/services/route_service.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/services/route_service.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/lib/widgets/tariqi_logo.dart" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/lib/widgets/tariqi_logo.dart" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/pubspec.lock" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/pubspec.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/pubspec.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/pubspec.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/index.html" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/index.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-1x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-1x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-4x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/dark-4x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-1x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-1x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-2x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-2x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-3x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-3x.png" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-4x.png" beforeDir="false" afterPath="$PROJECT_DIR$/voyageur_app/web/splash/img/light-4x.png" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ClangdSettings">
+    <option name="formatViaClangd" value="false" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
+  <component name="ProjectId" id="3D5HfntbZul18DG6uolxmBvogO4" />
+  <component name="ProjectLevelVcsManager">
+    <ConfirmationsSetting value="2" id="Add" />
+  </component>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.cidr.known.project.marker": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.readMode.enableVisualFormatting": "true",
+    "cf.first.check.clang-format": "false",
+    "cidr.known.project.marker": "true",
+    "dart.analysis.tool.window.visible": "false",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "/home/hako/transport_system/chauffeur_app",
+    "settings.editor.selected.configurable": "configurable.group.appearance",
+    "show.migrate.to.gradle.popup": "false"
+  }
+}]]></component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/transport_app/assets/images" />
+      <recent name="$PROJECT_DIR$/chauffeur_app/assets/images" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="main.dart" type="FlutterRunConfigurationType" factoryName="Flutter">
+      <option name="filePath" value="$PROJECT_DIR$/chauffeur_app/lib/main.dart" />
+      <method v="2" />
+    </configuration>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="3f436353-5b1b-46a5-abc8-483aa20a82b5" name="Changes" comment="" />
+      <created>1777565115763</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1777565115763</updated>
+    </task>
+    <servers />
+  </component>
+</project>

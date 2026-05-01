@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
+import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import '../theme_notifier.dart';
 import '../widgets/bus_loading_indicator.dart';
@@ -50,7 +51,7 @@ class _PickLocationScreenState extends State<PickLocationScreen> {
   }
 
   // ============================================
-  // SEARCH USING NOMINATIM (free, no API key)
+  // SEARCH USING MAPBOX
   // ============================================
   Future<void> _searchPlace(String query) async {
     if (query.trim().length < 2) {
@@ -65,27 +66,25 @@ class _PickLocationScreenState extends State<PickLocationScreen> {
 
     try {
       final url = Uri.parse(
-        'https://nominatim.openstreetmap.org/search'
-            '?q=${Uri.encodeComponent(query)}'
-            '&format=json'
+        'https://api.mapbox.com/geocoding/v5/mapbox.places/${Uri.encodeComponent(query)}.json'
+            '?access_token=${config.mapboxToken}'
+            '&country=dz'
+            '&language=fr'
             '&limit=5'
-            '&countrycodes=dz'
-            '&accept-language=fr',
+            '&types=place,locality,neighborhood,address,poi',
       );
 
-      final response = await http.get(
-        url,
-        headers: {'User-Agent': 'TransporteurApp/1.0'},
-      );
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
+        final features = json.decode(response.body)['features'] as List;
         setState(() {
-          _searchResults = data.map((item) {
+          _searchResults = features.map((f) {
+            final coords = f['geometry']['coordinates'] as List;
             return _SearchResult(
-              name: item['display_name'] ?? '',
-              lat: double.tryParse(item['lat']?.toString() ?? '') ?? 0,
-              lng: double.tryParse(item['lon']?.toString() ?? '') ?? 0,
+              name: f['place_name'] ?? f['text'] ?? '',
+              lat: (coords[1] as num).toDouble(),
+              lng: (coords[0] as num).toDouble(),
             );
           }).toList();
           _showResults = _searchResults.isNotEmpty;
@@ -164,8 +163,8 @@ class _PickLocationScreenState extends State<PickLocationScreen> {
               TileLayer(
                 urlTemplate: RouteService.tileUrl,
                 userAgentPackageName: 'com.example.transporteur_app',
-                tileSize: 512,
-                zoomOffset: -1,
+                tileSize: config.mapTileSize,
+                zoomOffset: config.mapZoomOffset,
               ),
               if (_selectedPoint != null)
                 MarkerLayer(

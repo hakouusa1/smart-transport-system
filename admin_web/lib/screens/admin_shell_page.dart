@@ -8,6 +8,7 @@ import 'new_owners_page.dart';
 import 'new_buses_page.dart';
 import 'users_page.dart';
 import 'lines_page.dart';
+import 'stops_page.dart';
 import 'buses_page.dart';
 import 'bookings_page.dart';
 import 'incidents_page.dart';
@@ -28,6 +29,7 @@ class _AdminShellState extends State<AdminShell> {
     const NewOwnersPage(),
     const NewBusesPage(),
     const UsersPage(),
+    const StopsPage(),
     const LinesPage(),
     const BusesPage(),
     const BookingsPage(),
@@ -40,6 +42,7 @@ class _AdminShellState extends State<AdminShell> {
     _PageDef(Icons.star_rounded, 'New Subscriptions', AdminNotificationService.getPendingSubscriptionsCount()),
     _PageDef(Icons.new_releases_rounded, 'New Buses', AdminNotificationService.getPendingBusesCount()),
     _PageDef(Icons.people_rounded, 'Utilisateurs', null),
+    _PageDef(Icons.location_on_rounded, 'Arrêts', null),
     _PageDef(Icons.route_rounded, 'Lignes', null),
     _PageDef(Icons.directions_bus_rounded, 'Bus', null),
     _PageDef(Icons.bookmark_rounded, 'Réservations', null),

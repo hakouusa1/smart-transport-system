@@ -169,14 +169,19 @@ extension BusTripExtension on Bus {
         )
       ];
     }
-    
+
+    final count = tripSchedules.length;
+    final startIdx = currentTripIndex % count;
+
     List<BusTrip> trips = [];
-    for (int i = currentTripIndex; i < tripSchedules.length; i++) {
+    for (int offset = 0; offset < count - startIdx; offset++) {
+      final scheduleIdx = startIdx + offset;
+      final tripIdx = currentTripIndex + offset;
       trips.add(BusTrip(
         bus: this,
-        tripIndex: i,
-        isEnTrajet: i == currentTripIndex ? isOnTrip : false,
-        scheduleTime: tripSchedules[i],
+        tripIndex: tripIdx,
+        isEnTrajet: offset == 0 ? isOnTrip : false,
+        scheduleTime: tripSchedules[scheduleIdx],
       ));
     }
     return trips;

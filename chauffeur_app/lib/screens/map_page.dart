@@ -11,8 +11,6 @@ import 'package:http/http.dart' as http;
 import '../app_config.dart' as config;
 import '../services/offline_map_service.dart';
 
-const _mapboxToken = config.mapboxToken;
-
 class MapPage extends StatefulWidget {
   final String busId;
 
@@ -22,11 +20,14 @@ class MapPage extends StatefulWidget {
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   StreamSubscription<Position>? _positionSubscription;
   StreamSubscription<CompassEvent>? _compassSubscription;
   Timer? _etaTimer;
+
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
 
   LatLng _currentPosition = const LatLng(36.7538, 3.0588);
   double _currentSpeed = 0.0;
@@ -60,21 +61,31 @@ class _MapPageState extends State<MapPage> {
 
   LatLng? _lastEtaPosition;
   DateTime? _lastCompassUpdate;
+  double _lastRotatedHeading = 0.0;
 
   // Offline map caching
   bool _mapInitialized = false;
   bool _isCachingMap = false;
   double _cacheProgress = 0.0;
+  bool _isRerouting = false;
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 0.65, end: 1.0).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
     _initOfflineMap();
     _init();
   }
 
   @override
   void dispose() {
+    _pulseController.dispose();
     _positionSubscription?.cancel();
     _compassSubscription?.cancel();
     _etaTimer?.cancel();
@@ -166,15 +177,19 @@ class _MapPageState extends State<MapPage> {
       return;
     }
 
-    // Step 3: Compass — rotate map AND icon with phone heading (capped at 10 Hz, Fix D)
+    // Step 3: Compass — rotate map AND icon with phone heading.
     _compassSubscription = FlutterCompass.events?.listen((event) {
       final h = event.heading;
       if (h == null || !mounted) return;
       final now = DateTime.now();
       if (_lastCompassUpdate != null &&
-          now.difference(_lastCompassUpdate!).inMilliseconds < 100) { return; }
+          now.difference(_lastCompassUpdate!).inMilliseconds < 500) { return; }
       _lastCompassUpdate = now;
       setState(() => _currentHeading = h);
+      final diff = ((h - _lastRotatedHeading) % 360).abs();
+      final wrappedDiff = diff > 180 ? 360 - diff : diff;
+      if (wrappedDiff < 5.0) return;
+      _lastRotatedHeading = h;
       _mapController.moveAndRotate(
           _currentPosition,
           _mapController.camera.zoom,
@@ -212,13 +227,10 @@ class _MapPageState extends State<MapPage> {
 
   /// Fetches Firestore, route, and ETA in sequence. The GPS fix runs independently.
   Future<void> _fetchBackgroundData() async {
-    // GPS fix is truly fire-and-forget: a slow/cold GPS lock must never
-    // block the Firestore → route → ETA pipeline.
     unawaited(_fetchAccurateGpsFix());
 
     await _fetchFirestoreData();
 
-    // Route and ETA both need Firestore data; run them in parallel.
     await Future.wait([
       _fetchFullRoute(),
       _fetchEta(),
@@ -234,10 +246,6 @@ class _MapPageState extends State<MapPage> {
     if (mounted) setState(() {});
   }
 
-  /// Gets a high-accuracy GPS fix with a 15-second hard timeout.
-  /// On success it snaps the map to the accurate position.
-  /// On failure (cold GPS, timeout, denied) it exits silently — the
-  /// position stream handles all subsequent updates.
   Future<void> _fetchAccurateGpsFix() async {
     try {
       final pos = await Geolocator.getCurrentPosition(
@@ -258,12 +266,9 @@ class _MapPageState extends State<MapPage> {
         _mapController.camera.zoom,
         -_currentHeading,
       );
-    } catch (_) {
-      // Timed out or failed — position stream handles ongoing updates.
-    }
+    } catch (_) {}
   }
 
-  /// Fetches bus departure/arrival coordinates from Firestore.
   Future<void> _fetchFirestoreData() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -289,18 +294,19 @@ class _MapPageState extends State<MapPage> {
   // ============================================
   // FETCH FULL ROUTE
   // ============================================
-  Future<void> _fetchFullRoute() async {
-    if (_departureLat == null || _departureLng == null ||
-        _arrivalLat == null || _arrivalLng == null) {
+  Future<void> _fetchFullRoute({LatLng? from}) async {
+    if ((_departureLat == null || _departureLng == null) && from == null) {
+      return;
+    }
+    if (_arrivalLat == null || _arrivalLng == null) {
       return;
     }
 
+    final startLat = from?.latitude ?? _departureLat!;
+    final startLng = from?.longitude ?? _departureLng!;
+
     try {
-      final url = Uri.parse(
-        'https://api.mapbox.com/directions/v5/mapbox/driving/'
-            '$_departureLng,$_departureLat;$_arrivalLng,$_arrivalLat'
-            '?geometries=geojson&overview=false&steps=true&access_token=$_mapboxToken',
-      );
+      final url = Uri.parse(config.getDirectionsUrl(startLng, startLat, _arrivalLng!, _arrivalLat!));
 
       final response = await http.get(url);
 
@@ -323,7 +329,7 @@ class _MapPageState extends State<MapPage> {
                     'distance': (step['distance'] as num).toDouble(),
                     'name': step['name'] ?? '',
                   });
-                  
+
                   final coords = step['geometry']['coordinates'] as List;
                   for (final c in coords) {
                     final point = LatLng(
@@ -341,6 +347,7 @@ class _MapPageState extends State<MapPage> {
 
           if (mounted && allPoints.isNotEmpty) {
             setState(() {
+              _currentStepIndex = 0;
               _fullRoutePoints = allPoints;
               _remainingRoutePoints = List.from(_fullRoutePoints);
               _completedRoutePoints = [];
@@ -353,6 +360,8 @@ class _MapPageState extends State<MapPage> {
     } catch (e) {
       debugPrint('Route exception: $e');
       _showSnack('Impossible de charger l\'itinéraire. Vérifiez votre connexion.');
+    } finally {
+      if (from != null) _isRerouting = false;
     }
   }
 
@@ -363,12 +372,7 @@ class _MapPageState extends State<MapPage> {
     if (_arrivalLat == null || _arrivalLng == null) return;
 
     try {
-      final url = Uri.parse(
-        'https://api.mapbox.com/directions/v5/mapbox/driving/'
-            '${_currentPosition.longitude},${_currentPosition.latitude};'
-            '$_arrivalLng,$_arrivalLat'
-            '?access_token=$_mapboxToken',
-      );
+      final url = Uri.parse(config.getDirectionsUrl(_currentPosition.longitude, _currentPosition.latitude, _arrivalLng!, _arrivalLat!));
 
       final response = await http.get(url);
 
@@ -414,7 +418,6 @@ class _MapPageState extends State<MapPage> {
       }
     }
 
-    // Calculate distance to next turn
     if (_currentStepIndex < _routeSteps.length) {
       final step = _routeSteps[_currentStepIndex];
       final maneuver = step['maneuver'] as Map<String, dynamic>?;
@@ -425,9 +428,7 @@ class _MapPageState extends State<MapPage> {
           _distanceToNextTurn = dist.as(LengthUnit.Meter, _currentPosition, turnPoint);
         }
       }
-      
-      // Update current step index based on position
-      // Search forward from current index only — never go backwards
+
       for (int i = _currentStepIndex; i < _routeSteps.length; i++) {
         final stepManeuver = _routeSteps[i]['maneuver'] as Map<String, dynamic>?;
         if (stepManeuver != null) {
@@ -446,12 +447,11 @@ class _MapPageState extends State<MapPage> {
       }
     }
 
-    if (closestIndex == 0 && minDist > 100) {
-      setState(() {
-        _completedRoutePoints = [];
-        _remainingRoutePoints = List.from(_fullRoutePoints);
-      });
-      if (!_preRouteLoaded) _fetchPreRoute();
+    if (minDist > 100) {
+      if (!_isRerouting) {
+        _isRerouting = true;
+        _fetchFullRoute(from: _currentPosition);
+      }
     } else {
       if (_preRoute.isNotEmpty) setState(() { _preRoute = []; _preRouteLoaded = false; });
       setState(() {
@@ -471,12 +471,7 @@ class _MapPageState extends State<MapPage> {
     if (_departureLat == null || _departureLng == null) return;
     _preRouteLoaded = true;
     try {
-      final url = Uri.parse(
-        'https://api.mapbox.com/directions/v5/mapbox/driving/'
-            '${_currentPosition.longitude},${_currentPosition.latitude};'
-            '$_departureLng,$_departureLat'
-            '?overview=full&geometries=geojson&access_token=$_mapboxToken',
-      );
+      final url = Uri.parse(config.getDirectionsUrl(_currentPosition.longitude, _currentPosition.latitude, _departureLng!, _departureLat!));
       final res = await http.get(url);
       if (res.statusCode == 200) {
         final coords = jsonDecode(res.body)['routes'][0]['geometry']['coordinates'] as List;
@@ -514,7 +509,7 @@ class _MapPageState extends State<MapPage> {
     if (_currentStepIndex >= _routeSteps.length) {
       return Icons.location_on;
     }
-    
+
     final step = _routeSteps[_currentStepIndex];
     final maneuver = step['maneuver'] as Map<String, dynamic>?;
     final type = maneuver?['type'] as String? ?? '';
@@ -582,388 +577,581 @@ class _MapPageState extends State<MapPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: _isLoading
-          ? const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Recherche de votre position GPS...'),
-                ],
-              ),
-            )
+          ? _buildLoadingScreen()
           : _errorMsg != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.location_off, size: 64, color: Colors.red.shade300),
-                        const SizedBox(height: 16),
-                        Text(_errorMsg!, textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.red.shade700, fontSize: 16)),
-                        const SizedBox(height: 20),
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            await Geolocator.openAppSettings();
-                          },
-                          icon: const Icon(Icons.settings),
-                          label: const Text('Ouvrir les paramètres'),
+              ? _buildErrorScreen()
+              : _buildMapScreen(),
+    );
+  }
+
+  Widget _buildLoadingScreen() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1A237E), Color(0xFF1565C0)],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 2),
+              ),
+              child: const Icon(Icons.directions_bus_rounded, color: Colors.white, size: 50),
+            ),
+            const SizedBox(height: 28),
+            const CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+            const SizedBox(height: 18),
+            const Text(
+              'Recherche de votre position GPS...',
+              style: TextStyle(color: Colors.white70, fontSize: 15, fontWeight: FontWeight.w500),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorScreen() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.location_off, size: 64, color: Colors.red.shade300),
+            const SizedBox(height: 16),
+            Text(_errorMsg!, textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.red.shade700, fontSize: 16)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () async {
+                await Geolocator.openAppSettings();
+              },
+              icon: const Icon(Icons.settings),
+              label: const Text('Ouvrir les paramètres'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String get _mapTileUrl {
+    if (!config.useMapbox) return config.mapTileUrl;
+    return 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}@2x?access_token=${config.mapboxToken}';
+  }
+
+  Widget _buildMapScreen() {
+    return Stack(
+      children: [
+        // Perspective-tilted map
+        ClipRect(
+          child: Transform(
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0006)
+              ..rotateX(-0.30),
+            alignment: Alignment.bottomCenter,
+            child: Transform.scale(
+              scaleX: 1.5,
+              scaleY: 1.4,
+              alignment: Alignment.bottomCenter,
+              child: SizedBox.expand(
+                child: FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _currentPosition,
+                    initialZoom: 17,
+                  ),
+                  children: [
+                    if (_mapInitialized)
+                      OfflineMapService.getTileLayer()
+                    else
+                      TileLayer(
+                        urlTemplate: _mapTileUrl,
+                        userAgentPackageName: 'com.example.chauffeur_app',
+                        tileSize: config.mapTileSize,
+                        zoomOffset: config.mapZoomOffset,
+                      ),
+
+                    // Pre-route (bus to departure)
+                    if (_preRoute.length >= 2)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: _preRoute,
+                            color: const Color(0xFF4285F4).withValues(alpha: 0.18),
+                            strokeWidth: 14,
+                          ),
+                          Polyline(
+                            points: _preRoute,
+                            color: const Color(0xFF4285F4).withValues(alpha: 0.5),
+                            strokeWidth: 5,
+                            strokeCap: StrokeCap.round,
+                          ),
+                        ],
+                      ),
+
+                    // Completed route — amber glow
+                    if (_completedRoutePoints.length >= 2)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: _completedRoutePoints,
+                            color: const Color(0xFFFFA726).withValues(alpha: 0.25),
+                            strokeWidth: 18,
+                            strokeCap: StrokeCap.round,
+                          ),
+                          Polyline(
+                            points: _completedRoutePoints,
+                            color: const Color(0xFFFFA726),
+                            strokeWidth: 7,
+                            strokeCap: StrokeCap.round,
+                          ),
+                        ],
+                      ),
+
+                    // Remaining route — blue glow
+                    if (_remainingRoutePoints.length >= 2)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: _remainingRoutePoints,
+                            color: const Color(0xFF1E88E5).withValues(alpha: 0.22),
+                            strokeWidth: 18,
+                            strokeCap: StrokeCap.round,
+                          ),
+                          Polyline(
+                            points: _remainingRoutePoints,
+                            color: const Color(0xFF1E88E5),
+                            strokeWidth: 7,
+                            strokeCap: StrokeCap.round,
+                          ),
+                        ],
+                      ),
+
+                    // Departure marker
+                    if (_departureLat != null && _departureLng != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(_departureLat!, _departureLng!),
+                            width: 52, height: 64,
+                            alignment: Alignment.bottomCenter,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 44, height: 44,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [Color(0xFF66BB6A), Color(0xFF2E7D32)],
+                                    ),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2.5),
+                                    boxShadow: [
+                                      BoxShadow(color: Colors.green.withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 2),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.trip_origin, color: Colors.white, size: 22),
+                                ),
+                                Container(width: 3, height: 10, color: Colors.white),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    // Arrival marker
+                    if (_arrivalLat != null && _arrivalLng != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: LatLng(_arrivalLat!, _arrivalLng!),
+                            width: 52, height: 64,
+                            alignment: Alignment.bottomCenter,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 44, height: 44,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [Color(0xFFEF5350), Color(0xFFB71C1C)],
+                                    ),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2.5),
+                                    boxShadow: [
+                                      BoxShadow(color: Colors.red.withValues(alpha: 0.5), blurRadius: 10, spreadRadius: 2),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.flag_rounded, color: Colors.white, size: 22),
+                                ),
+                                Container(width: 3, height: 10, color: Colors.white),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+
+                    // Current position — pulsing blue chevron
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _currentPosition,
+                          width: 90,
+                          height: 90,
+                          child: AnimatedBuilder(
+                            animation: _pulseAnimation,
+                            builder: (_, __) => AnimatedRotation(
+                              turns: _currentHeading / 360,
+                              duration: const Duration(milliseconds: 150),
+                              child: Stack(alignment: Alignment.center, children: [
+                                Container(
+                                  width: 90 * _pulseAnimation.value,
+                                  height: 90 * _pulseAnimation.value,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0x221E88E5),
+                                  ),
+                                ),
+                                Container(
+                                  width: 60, height: 60,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: const Color(0xFF1E88E5).withValues(alpha: 0.45),
+                                        blurRadius: 18,
+                                        spreadRadius: 4,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.navigation, color: Colors.white, size: 36),
+                              ]),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                  ),
-                )
-              : Stack(
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        // Cache progress indicator
+        if (_isCachingMap)
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: LinearProgressIndicator(
+              value: _cacheProgress,
+              backgroundColor: Colors.transparent,
+              color: Colors.lightBlue.withValues(alpha: 0.7),
+              minHeight: 3,
+            ),
+          ),
+
+        // ============================================
+        // NAVIGATION TOP BAR — dark blue gradient
+        // ============================================
+        Positioned(
+          top: 0, left: 0, right: 0,
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [Color(0xFF1A237E), Color(0xFF1565C0)],
+              ),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 12, offset: const Offset(0, 4)),
+              ],
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 16),
+                child: Row(
                   children: [
-                    // Perspective-tilted map (simulates Google Maps navigation angle)
-                    ClipRect(
-                      child: Transform(
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.0006) // perspective depth
-                          ..rotateX(-0.30),          // ~17° forward tilt
-                        alignment: Alignment.bottomCenter,
-                        child: Transform.scale(
-                          scaleX: 1.5,
-                          scaleY: 1.4,
-                          alignment: Alignment.bottomCenter,
-                          child: SizedBox.expand(
-                          child: FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: _currentPosition,
-                        initialZoom: 17,
+                    // Maneuver icon
+                    Container(
+                      width: 64, height: 64,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1.5),
                       ),
+                      child: Icon(_getManeuverIcon(), color: Colors.white, size: 40),
+                    ),
+                    const SizedBox(width: 14),
+                    // Distance + street
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _getDistanceToTurn(),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              height: 1.0,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            _getNextStreet(),
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // ETA chip
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        if (_mapInitialized)
-                          OfflineMapService.getTileLayer()
-                        else
-                          TileLayer(
-                            urlTemplate:
-                                'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}@2x?access_token=$_mapboxToken',
-                            userAgentPackageName: 'com.example.chauffeur_app',
-                            tileSize: 512,
-                            zoomOffset: -1,
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
                           ),
-
-                        // Pre-route (bus to departure, when bus hasn't reached route start)
-                        if (_preRoute.length >= 2)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _preRoute,
-                                color: const Color(0xFF4285F4).withValues(alpha: 0.2),
-                                strokeWidth: 12,
-                              ),
-                              Polyline(
-                                points: _preRoute,
-                                color: const Color(0xFF4285F4).withValues(alpha: 0.45),
-                                strokeWidth: 6,
-                              ),
-                            ],
+                          child: Text(
+                            _arrivalTimeText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
                           ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          _etaText,
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.75), fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
 
-                        // Completed route — orange glow + solid (Google Maps style)
-                        if (_completedRoutePoints.length >= 2)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _completedRoutePoints,
-                                color: const Color(0xFFFF9800).withValues(alpha: 0.3),
-                                strokeWidth: 16,
-                              ),
-                              Polyline(
-                                points: _completedRoutePoints,
-                                color: const Color(0xFFFF9800),
-                                strokeWidth: 8,
-                              ),
-                            ],
+        // ============================================
+        // BOTTOM INFO CARD — dark themed
+        // ============================================
+        Positioned(
+          bottom: 0, left: 0, right: 0,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A),
+              borderRadius: BorderRadius.circular(22),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: 24,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Destination + live indicator
+                    Row(
+                      children: [
+                        const Icon(Icons.flag_rounded, color: Color(0xFFEF5350), size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _arrivalName ?? 'Destination',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-
-                        // Remaining route — blue glow + solid (Google Maps style)
-                        if (_remainingRoutePoints.length >= 2)
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _remainingRoutePoints,
-                                color: const Color(0xFF4285F4).withValues(alpha: 0.25),
-                                strokeWidth: 16,
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8, height: 8,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF4CAF50),
+                                shape: BoxShape.circle,
                               ),
-                              Polyline(
-                                points: _remainingRoutePoints,
-                                color: const Color(0xFF4285F4),
-                                strokeWidth: 8,
-                              ),
-                            ],
-                          ),
-
-                        // Departure
-                        if (_departureLat != null && _departureLng != null)
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: LatLng(_departureLat!, _departureLng!),
-                                width: 50, height: 50,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.green,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 3),
-                                    boxShadow: [
-                                      BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4)
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.trip_origin, color: Colors.white, size: 24),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                        // Arrival
-                        if (_arrivalLat != null && _arrivalLng != null)
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: LatLng(_arrivalLat!, _arrivalLng!),
-                                width: 50, height: 50,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 3),
-                                    boxShadow: [
-                                      BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4)
-                                    ],
-                                  ),
-                                  child: const Icon(Icons.location_on, color: Colors.white, size: 24),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                        // Current position — Google Maps-style navigation chevron (self-rotates with compass)
-                        MarkerLayer(
-                          markers: [
-                            Marker(
-                              point: _currentPosition,
-                              width: 80,
-                              height: 80,
-                              child: AnimatedRotation(
-                                turns: _currentHeading / 360,
-                                duration: const Duration(milliseconds: 150),
-                                child: Stack(alignment: Alignment.center, children: [
-                                Container(
-                                  width: 80, height: 80,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Color(0x334285F4),
-                                  ),
-                                ),
-                                Container(
-                                  width: 56, height: 56,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: Colors.white,
-                                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 12, spreadRadius: 2)],
-                                  ),
-                                ),
-                                const Icon(Icons.navigation, color: Color(0xFF4285F4), size: 40),
-                              ]),
-                              ),  // Transform.rotate
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'En cours',
+                              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
                             ),
                           ],
                         ),
                       ],
-                          ),  // FlutterMap
-                          ),  // SizedBox.expand
-                        ),  // Transform.scale
-                      ),  // Transform (perspective+tilt)
-                    ),  // ClipRect
-
-                    // ============================================
-                    // NAVIGATION TOP BAR - Green bar like in the image
-                    // ============================================
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: SafeArea(
-                        bottom: false,
-                        child: Container(
-                          color: Colors.green.shade700,
-                          child: Column(
-                            children: [
-                              // Main navigation info
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                child: Row(
-                                  children: [
-                                    // Turn arrow icon
-                                    Container(
-                                      width: 60,
-                                      height: 60,
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Icon(
-                                        _getManeuverIcon(),
-                                        color: Colors.green.shade700,
-                                        size: 40,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    
-                                    // Distance and street name
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _getDistanceToTurn(),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 28,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _getNextStreet(),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
                     ),
-
-                    // Bottom info card
-                    Positioned(
-                      bottom: 0, left: 0, right: 0,
-            child: Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, -2))],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Container(width: 10, height: 10,
-                          decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle)),
-                      const SizedBox(width: 8),
-                      Text('Trajet en cours',
-                          style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w600)),
-                      const Spacer(),
-                      Text(_lastUpdateTime,
-                          style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-                    ],
-                  ),
-                  const Divider(height: 20),
-                  Row(
-                    children: [
-                      _MapStat(icon: Icons.speed, label: 'Vitesse', value: _speedText, color: Colors.blue),
-                      const SizedBox(width: 16),
-                      _MapStat(icon: Icons.route, label: 'Distance', value: _distanceText, color: Colors.orange),
-                      const SizedBox(width: 16),
-                      _MapStat(icon: Icons.access_time_rounded, label: 'ETA', value: _etaText, color: Colors.green),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    // Stats row
+                    Row(
+                      children: [
+                        _DarkStat(
+                          icon: Icons.speed_rounded,
+                          label: 'Vitesse',
+                          value: _speedText,
+                          color: const Color(0xFF42A5F5),
+                        ),
+                        const SizedBox(width: 8),
+                        _DarkStat(
+                          icon: Icons.route_rounded,
+                          label: 'Distance',
+                          value: _distanceText,
+                          color: const Color(0xFFFFB74D),
+                        ),
+                        const SizedBox(width: 8),
+                        _DarkStat(
+                          icon: Icons.access_time_rounded,
+                          label: 'Arrivée',
+                          value: _arrivalTimeText,
+                          color: const Color(0xFF66BB6A),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
+        ),
 
-          // ============================================
-          // CONTROLS
-          // ============================================
-          Positioned(
-            bottom: 160, right: 16,
-            child: FloatingActionButton.small(
-              heroTag: 'center',
-              onPressed: _centerOnDriver,
-              backgroundColor: Colors.white,
-              child: Icon(Icons.my_location, color: Theme.of(context).colorScheme.primary),
-            ),
+        // ============================================
+        // MAP CONTROLS — grouped right side
+        // ============================================
+        Positioned(
+          right: 12,
+          bottom: 155,
+          child: Column(
+            children: [
+              _MapButton(
+                icon: Icons.my_location_rounded,
+                onTap: _centerOnDriver,
+                accent: const Color(0xFF1E88E5),
+              ),
+              const SizedBox(height: 8),
+              _MapButton(
+                icon: Icons.fit_screen_rounded,
+                onTap: _fitAll,
+              ),
+              const SizedBox(height: 8),
+              _MapButton(
+                icon: Icons.add_rounded,
+                onTap: () => _mapController.move(
+                    _mapController.camera.center, _mapController.camera.zoom + 1),
+              ),
+              const SizedBox(height: 8),
+              _MapButton(
+                icon: Icons.remove_rounded,
+                onTap: () => _mapController.move(
+                    _mapController.camera.center, _mapController.camera.zoom - 1),
+              ),
+            ],
           ),
+        ),
+      ],
+    );
+  }
+}
 
-          Positioned(
-            top: 16, right: 16,
-            child: Column(
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'zoomIn',
-                  onPressed: () => _mapController.move(
-                      _mapController.camera.center, _mapController.camera.zoom + 1),
-                  backgroundColor: Colors.white,
-                  child: const Icon(Icons.add, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'zoomOut',
-                  onPressed: () => _mapController.move(
-                      _mapController.camera.center, _mapController.camera.zoom - 1),
-                  backgroundColor: Colors.white,
-                  child: const Icon(Icons.remove, color: Colors.black87),
-                ),
-              ],
-            ),
-          ),
-        ],
+class _DarkStat extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+  const _DarkStat({required this.icon, required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.22), width: 1),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(height: 4),
+            Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 10)),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _ETARow extends StatelessWidget {
-  final IconData icon; final Color color; final String value; final String label;
-  const _ETARow({required this.icon, required this.color, required this.value, required this.label});
+class _MapButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color? accent;
+  const _MapButton({required this.icon, required this.onTap, this.accent});
+
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      Container(
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-        child: Icon(icon, size: 18, color: color),
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(13),
+      elevation: 5,
+      shadowColor: Colors.black26,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(13),
+        child: SizedBox(
+          width: 46,
+          height: 46,
+          child: Icon(icon, color: accent ?? Colors.black87, size: 22),
+        ),
       ),
-      const SizedBox(width: 10),
-      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
-      ]),
-    ]);
-  }
-}
-
-
-class _MapStat extends StatelessWidget {
-  final IconData icon; final String label; final String value; final Color color;
-  const _MapStat({required this.icon, required this.label, required this.value, required this.color});
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(child: Column(children: [
-      Icon(icon, size: 20, color: color),
-      const SizedBox(height: 4),
-      Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: color)),
-      Text(label, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-    ]));
+    );
   }
 }

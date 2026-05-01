@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,8 +8,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
 import '../data/wilayas_data.dart';
+import '../l10n/app_localizations.dart';
 import '../models/bus_model.dart';
 import '../services/supabase_storage_service.dart';
+import '../services/firebase_service.dart';
+import '../theme_notifier.dart';
 import '../widgets/bus_loading_indicator.dart';
 
 
@@ -34,6 +38,7 @@ class _AddBusScreenState extends State<AddBusScreen> {
   final TextEditingController _receveurController = TextEditingController();
   final TextEditingController _lastVidangeKmController = TextEditingController();
   final TextEditingController _currentKmController = TextEditingController();
+  final TextEditingController _poidsController = TextEditingController();
   late bool _isActive;
 
   // Trips
@@ -60,6 +65,7 @@ class _AddBusScreenState extends State<AddBusScreen> {
   DateTime? _lastVidangeDate;
 
   bool _isLoading = false;
+  bool _isReassigning = false;
   bool _obscurePassword = true;
   bool get _isEditing => widget.busToEdit != null;
 
@@ -72,10 +78,20 @@ class _AddBusScreenState extends State<AddBusScreen> {
         TextEditingController(text: widget.busToEdit?.busNumber ?? '');
     _driverEmailController = TextEditingController();
     _driverPasswordController = TextEditingController();
-    _salaryController = TextEditingController();
+    _salaryController = TextEditingController(
+      text: widget.busToEdit?.salary != null
+          ? widget.busToEdit!.salary!.toInt().toString()
+          : '',
+    );
+    if (widget.busToEdit?.recipientSalary != null) {
+      _receveurController.text = widget.busToEdit!.recipientSalary!.toInt().toString();
+    }
     _isActive = widget.busToEdit?.isActive ?? true;
     if (widget.busToEdit?.currentKm != null) {
       _currentKmController.text = widget.busToEdit!.currentKm.toString();
+    }
+    if (widget.busToEdit?.weightKg != null) {
+      _poidsController.text = widget.busToEdit!.weightKg.toString();
     }
     // Load trip schedules from existing bus
     final existing = widget.busToEdit?.allSchedules ?? [];
@@ -107,6 +123,15 @@ class _AddBusScreenState extends State<AddBusScreen> {
         );
       } catch (_) {}
     }
+    final aLat = widget.busToEdit?.arrivalLat;
+    final aLng = widget.busToEdit?.arrivalLng;
+    if (aLat != null && aLng != null) {
+      try {
+        _selectedArrivalWilaya = kWilayas.firstWhere(
+          (w) => (w.lat - aLat).abs() < 0.001 && (w.lng - aLng).abs() < 0.001,
+        );
+      } catch (_) {}
+    }
   }
 
   @override
@@ -119,6 +144,7 @@ class _AddBusScreenState extends State<AddBusScreen> {
     _receveurController.dispose();
     _lastVidangeKmController.dispose();
     _currentKmController.dispose();
+    _poidsController.dispose();
     super.dispose();
   }
 
@@ -126,21 +152,22 @@ class _AddBusScreenState extends State<AddBusScreen> {
   // PICK DOCUMENTS
   // ============================================
   Future<void> _pickImage(bool isLigne) async {
+    final l10n = AppLocalizations.of(context);
     final source = await showDialog<ImageSource>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Sélectionner une source'),
+        title: Text(l10n.selectSourceTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: Icon(Icons.camera_alt),
-              title: Text('Prendre une photo'),
+              leading: const Icon(Icons.camera_alt),
+              title: Text(l10n.takePhotoOption),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
             ListTile(
-              leading: Icon(Icons.photo_library),
-              title: Text('Sélectionner depuis la galerie'),
+              leading: const Icon(Icons.photo_library),
+              title: Text(l10n.selectFromGalleryOption),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
           ],
@@ -211,9 +238,9 @@ class _AddBusScreenState extends State<AddBusScreen> {
     if (picked != null) setState(() => _tripSchedules[index] = picked);
   }
 
-  String _tripTimeString(int index) {
+  String _tripTimeString(int index, AppLocalizations l10n) {
     final t = _tripSchedules[index];
-    if (t == null) return 'Non définie';
+    if (t == null) return l10n.tripTimeNotSet;
     return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
@@ -272,15 +299,21 @@ class _AddBusScreenState extends State<AddBusScreen> {
   Future<void> _saveBus() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Capture l10n before any async gap
+    final l10n = AppLocalizations.of(context);
 
+    if (_tripScheduleStrings.isEmpty) {
+      _showError(l10n.errorAtLeastOneTripSchedule);
+      return;
+    }
 
     if (!_isEditing) {
       if (_ligneValidationFile == null) {
-        _showError('La validation de ligne est requise');
+        _showError(l10n.errorLineValidationRequired);
         return;
       }
       if (_assuranceFile == null) {
-        _showError('L\'assurance est requise');
+        _showError(l10n.errorInsuranceRequired);
         return;
       }
     }
@@ -291,15 +324,22 @@ class _AddBusScreenState extends State<AddBusScreen> {
       if (_isEditing) {
         await _updateBus();
         if (mounted) {
-          _showSuccess('Bus mis à jour avec succès !');
+          _showSuccess(l10n.successBusUpdated);
           Navigator.pop(context);
         }
       } else {
-        await _createBusWithDriver();
+        final busName = _busNameController.text.trim();
+        final driverEmail = _driverEmailController.text.trim();
+        final driverPassword = _driverPasswordController.text.trim();
+        await _createBusWithDriver(l10n);
         if (mounted) {
-          _showSuccess(
-              'Bus créé ! En attente de validation par l\'administrateur.\nChauffeur: ${_driverEmailController.text.trim()}');
-          Navigator.pop(context);
+          setState(() => _isLoading = false);
+          await _showCredentialDialog(
+            busName: busName,
+            driverEmail: driverEmail,
+            tempPassword: driverPassword,
+          );
+          if (mounted) Navigator.pop(context);
         }
       }
     } catch (e) {
@@ -314,9 +354,9 @@ class _AddBusScreenState extends State<AddBusScreen> {
   // ============================================
   static const _planLimits = {'starter': 3, 'pro': 10};
 
-  Future<void> _createBusWithDriver() async {
+  Future<void> _createBusWithDriver(AppLocalizations l10n) async {
     final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) throw 'Vous n\'êtes pas connecté.';
+    if (currentUser == null) throw l10n.errorNotLoggedIn;
     final ownerUid = currentUser.uid;
 
     // Enforce subscription plan bus limit
@@ -332,13 +372,14 @@ class _AddBusScreenState extends State<AddBusScreen> {
       final current = countSnap.count ?? 0;
       if (current >= limit) {
         final planName = plan[0].toUpperCase() + plan.substring(1);
-        throw 'Limite atteinte : le forfait $planName permet $limit bus maximum. '
-            'Passez à un forfait supérieur pour ajouter plus de bus.';
+        throw l10n.errorBusLimitFmt(planName, limit);
       }
     }
 
     FirebaseApp? tempApp;
-    String driverUid;
+    FirebaseAuth? tempAuth;
+    String? driverUid;
+    User? createdAuthUser;
 
     try {
       try {
@@ -350,101 +391,118 @@ class _AddBusScreenState extends State<AddBusScreen> {
         );
       }
 
-      final tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+      tempAuth = FirebaseAuth.instanceFor(app: tempApp);
 
-      UserCredential driverCredential;
       try {
-        driverCredential = await tempAuth.createUserWithEmailAndPassword(
+        final driverCredential = await tempAuth.createUserWithEmailAndPassword(
           email: _driverEmailController.text.trim(),
           password: _driverPasswordController.text.trim(),
         );
+        createdAuthUser = driverCredential.user;
+        driverUid = createdAuthUser!.uid;
       } on FirebaseAuthException catch (e) {
-        if (e.code == 'email-already-in-use') {
-          throw 'Cet email est déjà utilisé.';
-        }
-        if (e.code == 'weak-password') {
-          throw 'Mot de passe trop faible.';
-        }
-        throw 'Erreur: ${e.message}';
+        if (e.code == 'email-already-in-use') throw l10n.errorEmailAlreadyInUse;
+        if (e.code == 'weak-password') throw l10n.errorWeakPassword;
+        throw l10n.errorFmt(e.message ?? '');
       }
 
-      driverUid = driverCredential.user!.uid;
-      await tempAuth.signOut();
+      // Save driver in users collection
+      await _firestore.collection('users').doc(driverUid).set({
+        'uid': driverUid,
+        'email': _driverEmailController.text.trim(),
+        'role': 'driver',
+        'displayName': _busNameController.text.trim(),
+        'createdAt': Timestamp.now(),
+        'ownerId': ownerUid,
+      });
+
+      // Generate busId before uploading so Storage path is known
+      final busId = _uuid.v4();
+
+      // Upload documents to Firebase Storage
+      final docUrls = await _uploadDocuments(busId);
+
+      // Vidange km
+      final kmText = _lastVidangeKmController.text.trim();
+      final vidangeKm = kmText.isNotEmpty ? int.tryParse(kmText) : null;
+
+      // Current km
+      final currKmText = _currentKmController.text.trim();
+      final currentKm = currKmText.isNotEmpty ? int.tryParse(currKmText) : null;
+
+      // Salary and receveur
+      final salaryText = _salaryController.text.trim();
+      final salary = salaryText.isNotEmpty ? int.tryParse(salaryText) : null;
+      final receveurText = _receveurController.text.trim();
+      final receveur = receveurText.isNotEmpty ? int.tryParse(receveurText) : null;
+      final poidsText = _poidsController.text.trim();
+      final poids = poidsText.isNotEmpty ? int.tryParse(poidsText) : null;
+
+      // Create bus — inactive until admin approves
+      await _firestore.collection('buses').doc(busId).set({
+        'busId': busId,
+        'busName': _busNameController.text.trim(),
+        'busNumber': _busNumberController.text.trim(),
+        'isActive': false,
+        'createdAt': Timestamp.now(),
+        'ownerId': ownerUid,
+        'driverId': driverUid,
+        'driverStatus': 'offline',
+        'validationStatus': 'pending',
+        'ligneValidationUrl': docUrls['ligneValidationUrl'],
+        'assuranceUrl': docUrls['assuranceUrl'],
+        'salary': salary,
+        'recipient': receveur,
+        'currentKm': currentKm,
+        'poids': poids,
+        'assuranceEndDate':
+            _insuranceEndDate != null ? Timestamp.fromDate(_insuranceEndDate!) : null,
+        'lastVidangeDate':
+            _lastVidangeDate != null ? Timestamp.fromDate(_lastVidangeDate!) : null,
+        'lastVidangeKm': vidangeKm,
+        'validationNote': null,
+        'numberOfTrips': _numberOfTrips,
+        'tripSchedules': _tripScheduleStrings,
+        'chauffeurSalaryType': _chauffeurSalaryType,
+        'receveurSalaryType': _receveurSalaryType,
+        if (_selectedDepartureWilaya != null) ...{
+          'departureLat': _selectedDepartureWilaya!.lat,
+          'departureLng': _selectedDepartureWilaya!.lng,
+        },
+        if (_selectedArrivalWilaya != null) ...{
+          'arrivalLat': _selectedArrivalWilaya!.lat,
+          'arrivalLng': _selectedArrivalWilaya!.lng,
+        },
+      });
+
+      // Log bus creation (password is intentionally excluded)
+      await _firestore.collection('bus_creation_logs').add({
+        'email': _driverEmailController.text.trim(),
+        'busId': busId,
+        'busName': _busNameController.text.trim(),
+        'adminUid': ownerUid,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
     } catch (e) {
+      // Clean up orphaned driver account if auth was created but a later step failed
+      if (createdAuthUser != null) {
+        try {
+          await createdAuthUser.delete();
+          await _firestore.collection('users').doc(createdAuthUser.uid).delete();
+        } catch (_) {}
+      }
       if (e is String) rethrow;
-      throw 'Erreur création compte chauffeur: $e';
+      throw l10n.errorBusCreationFmt('$e');
+    } finally {
+      try { await tempAuth?.signOut(); } catch (_) {}
     }
-
-    // Save driver in users collection
-    await _firestore.collection('users').doc(driverUid).set({
-      'uid': driverUid,
-      'email': _driverEmailController.text.trim(),
-      'role': 'driver',
-      'displayName': _busNameController.text.trim(),
-      'createdAt': Timestamp.now(),
-    });
-
-    // Generate busId before uploading so Storage path is known
-    final busId = _uuid.v4();
-
-    // Upload documents to Firebase Storage
-    final docUrls = await _uploadDocuments(busId);
-
-    // Vidange km
-    final kmText = _lastVidangeKmController.text.trim();
-    final vidangeKm = kmText.isNotEmpty ? int.tryParse(kmText) : null;
-
-    // Current km
-    final currKmText = _currentKmController.text.trim();
-    final currentKm = currKmText.isNotEmpty ? int.tryParse(currKmText) : null;
-
-    // Salary and receveur
-    final salaryText = _salaryController.text.trim();
-    final salary = salaryText.isNotEmpty ? int.tryParse(salaryText) : null;
-    final receveurText = _receveurController.text.trim();
-    final receveur = receveurText.isNotEmpty ? int.tryParse(receveurText) : null;
-
-    // Create bus — inactive until admin approves
-    await _firestore.collection('buses').doc(busId).set({
-      'busId': busId,
-      'busName': _busNameController.text.trim(),
-      'busNumber': _busNumberController.text.trim(),
-      'isActive': false,
-      'createdAt': Timestamp.now(),
-      'ownerId': ownerUid,
-      'driverId': driverUid,
-      'driverStatus': 'offline',
-      'validationStatus': 'pending',
-      'ligneValidationUrl': docUrls['ligneValidationUrl'],
-      'assuranceUrl': docUrls['assuranceUrl'],
-      'salary': salary,
-      'recipient': receveur,
-      'currentKm': currentKm,
-      'assuranceEndDate':
-          _insuranceEndDate != null ? Timestamp.fromDate(_insuranceEndDate!) : null,
-      'lastVidangeDate':
-          _lastVidangeDate != null ? Timestamp.fromDate(_lastVidangeDate!) : null,
-      'lastVidangeKm': vidangeKm,
-      'validationNote': null,
-      'numberOfTrips': _numberOfTrips,
-      'tripSchedules': _tripScheduleStrings,
-      'chauffeurSalaryType': _chauffeurSalaryType,
-      'receveurSalaryType': _receveurSalaryType,
-      if (_selectedDepartureWilaya != null) ...{
-        'departureLat': _selectedDepartureWilaya!.lat,
-        'departureLng': _selectedDepartureWilaya!.lng,
-      },
-      if (_selectedArrivalWilaya != null) ...{
-        'arrivalLat': _selectedArrivalWilaya!.lat,
-        'arrivalLng': _selectedArrivalWilaya!.lng,
-      },
-    });
   }
 
   // ============================================
   // WILAYA PICKER
   // ============================================
   Future<void> _pickWilaya({required bool isDeparture}) async {
+    final l10n = AppLocalizations.of(context);
     final search = ValueNotifier('');
     final current = isDeparture ? _selectedDepartureWilaya : _selectedArrivalWilaya;
     final result = await showModalBottomSheet<Wilaya>(
@@ -461,20 +519,20 @@ class _AddBusScreenState extends State<AddBusScreen> {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Column(children: [
             Container(width: 40, height: 4,
-                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+                decoration: BoxDecoration(color: ctx.appSub.withValues(alpha: 0.3), borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 12),
             Text(
-              isDeparture ? 'Wilaya de départ' : 'Wilaya d\'arrivée',
+              isDeparture ? l10n.departureWilaya : l10n.arrivalWilaya,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             TextField(
               autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Rechercher une wilaya...',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(vertical: 10),
+              decoration: InputDecoration(
+                hintText: l10n.searchWilayaHint,
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.symmetric(vertical: 10),
               ),
               onChanged: (v) => search.value = v.toLowerCase(),
             ),
@@ -494,16 +552,16 @@ class _AddBusScreenState extends State<AddBusScreen> {
                         leading: CircleAvatar(
                           radius: 14,
                           backgroundColor: selected
-                              ? Theme.of(ctx).colorScheme.primary
-                              : Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                              ? ctx.appPrimary
+                              : ctx.appCardBg2,
                           child: Text('${w.code}',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: selected ? Colors.white : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                                color: selected ? Colors.white : ctx.appSub,
                               )),
                         ),
                         title: Text(w.name, style: const TextStyle(fontSize: 14)),
-                        trailing: selected ? Icon(Icons.check, color: Theme.of(ctx).colorScheme.primary) : null,
+                        trailing: selected ? Icon(Icons.check, color: ctx.appPrimary) : null,
                         onTap: () => Navigator.pop(ctx, w),
                       );
                     },
@@ -526,9 +584,10 @@ class _AddBusScreenState extends State<AddBusScreen> {
   }
 
   Widget _wilayaPickerTile({required bool isDeparture}) {
+    final l10n = AppLocalizations.of(context);
     final selected = isDeparture ? _selectedDepartureWilaya : _selectedArrivalWilaya;
-    final label    = isDeparture ? 'Wilaya de départ' : 'Wilaya d\'arrivée';
-    final hint     = isDeparture ? 'Choisir la wilaya de départ' : 'Choisir la wilaya d\'arrivée';
+    final label    = isDeparture ? l10n.departureWilaya : l10n.arrivalWilaya;
+    final hint     = isDeparture ? l10n.chooseDepartureWilaya : l10n.chooseArrivalWilaya;
     final icon     = isDeparture ? Icons.trip_origin : Icons.location_on;
 
     return InkWell(
@@ -539,25 +598,25 @@ class _AddBusScreenState extends State<AddBusScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           color: selected != null
-              ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4)
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
+              ? context.appPrimary.withValues(alpha: 0.1)
+              : context.appCardBg2,
           border: Border.all(
             color: selected != null
-                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)
-                : Theme.of(context).colorScheme.outlineVariant,
+                ? context.appPrimary.withValues(alpha: 0.4)
+                : context.appBorder,
           ),
         ),
         child: Row(children: [
           Icon(icon,
               color: selected != null
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ? context.appPrimary
+                  : context.appSub,
               size: 20),
           const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(label,
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  style: TextStyle(fontSize: 12, color: context.appSub)),
               const SizedBox(height: 2),
               Text(
                 selected != null ? selected.name : hint,
@@ -565,13 +624,13 @@ class _AddBusScreenState extends State<AddBusScreen> {
                   fontSize: 15,
                   fontWeight: selected != null ? FontWeight.w600 : FontWeight.normal,
                   color: selected != null
-                      ? Theme.of(context).colorScheme.onSurface
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ? context.appText
+                      : context.appSub,
                 ),
               ),
             ]),
           ),
-          Icon(Icons.arrow_drop_down, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          Icon(Icons.arrow_drop_down, color: context.appSub),
         ]),
       ),
     );
@@ -581,17 +640,97 @@ class _AddBusScreenState extends State<AddBusScreen> {
   // UPDATE BUS
   // ============================================
   Future<void> _updateBus() async {
-    final currKmText = _currentKmController.text.trim();
+    final currKmText  = _currentKmController.text.trim();
+    final poidsText   = _poidsController.text.trim();
+    final salaryText  = _salaryController.text.trim();
+    final receveurText = _receveurController.text.trim();
     await _firestore.collection('buses').doc(widget.busToEdit!.busId).update({
       'busName': _busNameController.text.trim(),
       'busNumber': _busNumberController.text.trim(),
       'isActive': _isActive,
       if (currKmText.isNotEmpty) 'currentKm': int.parse(currKmText),
+      if (poidsText.isNotEmpty) 'poids': int.parse(poidsText),
+      if (salaryText.isNotEmpty) 'salary': int.parse(salaryText),
+      if (receveurText.isNotEmpty) 'recipient': int.parse(receveurText),
       'numberOfTrips': _numberOfTrips,
       'tripSchedules': _tripScheduleStrings,
       'chauffeurSalaryType': _chauffeurSalaryType,
       'receveurSalaryType': _receveurSalaryType,
+      if (_selectedDepartureWilaya != null) ...{
+        'departureLat': _selectedDepartureWilaya!.lat,
+        'departureLng': _selectedDepartureWilaya!.lng,
+      },
+      if (_selectedArrivalWilaya != null) ...{
+        'arrivalLat': _selectedArrivalWilaya!.lat,
+        'arrivalLng': _selectedArrivalWilaya!.lng,
+      },
     });
+  }
+
+  // ============================================
+  // REASSIGN DRIVER
+  // ============================================
+  Future<void> _handleReassignDriver() async {
+    final l10n = AppLocalizations.of(context);
+    final email = _driverEmailController.text.trim();
+    final password = _driverPasswordController.text.trim();
+
+    if (email.isEmpty) {
+      _showError(l10n.fieldRequired);
+      return;
+    }
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      _showError(l10n.invalidEmail);
+      return;
+    }
+    if (password.isEmpty) {
+      _showError(l10n.fieldRequired);
+      return;
+    }
+    if (password.length < 6) {
+      _showError(l10n.minSixChars);
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(l10n.reassignConfirmTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+        content: Text(l10n.reassignConfirmMessage),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(l10n.cancel)),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: context.appPurple),
+            child: Text(l10n.confirmDialogTitle),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isReassigning = true);
+
+    try {
+      await FirebaseService().reassignDriver(
+        busId: widget.busToEdit!.busId,
+        newEmail: email,
+        newPassword: password,
+      );
+
+      if (mounted) {
+        _showSuccess(l10n.successCredentialsUpdated);
+        // Clear fields after success
+        _driverEmailController.clear();
+        _driverPasswordController.clear();
+      }
+    } catch (e) {
+      if (mounted) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _isReassigning = false);
+    }
   }
 
   // ============================================
@@ -601,7 +740,7 @@ class _AddBusScreenState extends State<AddBusScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: Theme.of(context).colorScheme.error,
+        backgroundColor: context.appRed,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 4),
       ),
@@ -612,9 +751,27 @@ class _AddBusScreenState extends State<AddBusScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(msg),
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: context.appPrimary,
         behavior: SnackBarBehavior.floating,
         duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _showCredentialDialog({
+    required String busName,
+    required String driverEmail,
+    required String tempPassword,
+  }) async {
+    final l10n = AppLocalizations.of(context);
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _SuccessDialog(
+        busName: busName,
+        driverEmail: driverEmail,
+        tempPassword: tempPassword,
+        l10n: l10n,
       ),
     );
   }
@@ -629,28 +786,29 @@ class _AddBusScreenState extends State<AddBusScreen> {
     required XFile? file,
     required VoidCallback onTap,
   }) {
+    final l10n = AppLocalizations.of(context);
     final hasFile = file != null;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: EdgeInsets.all(14),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: hasFile ? color.withValues(alpha: 0.05) : Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: hasFile ? color.withValues(alpha: 0.05) : context.appCardBg2,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(children: [
           Container(
-            padding: EdgeInsets.all(8),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: hasFile
                   ? color.withValues(alpha: 0.1)
-                  : Theme.of(context).colorScheme.surfaceContainerHigh,
+                  : context.appCardBg2,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, color: hasFile ? color : Theme.of(context).colorScheme.onSurfaceVariant, size: 22),
+            child: Icon(icon, color: hasFile ? color : context.appSub, size: 22),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
@@ -658,21 +816,21 @@ class _AddBusScreenState extends State<AddBusScreen> {
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
-                  color: hasFile ? Theme.of(context).colorScheme.onSurface : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: hasFile ? context.appText : context.appSub,
                 ),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
-                hasFile ? file.name : 'Appuyez pour prendre une photo ou sélectionner depuis la galerie',
+                hasFile ? file.name : l10n.documentPickerHint,
                 style: TextStyle(
                   fontSize: 12,
-                  color: hasFile ? color : Theme.of(context).colorScheme.onSurfaceVariant,
+                  color: hasFile ? color : context.appSub,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ]),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           if (hasFile)
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
@@ -683,7 +841,7 @@ class _AddBusScreenState extends State<AddBusScreen> {
             )
           else
             Icon(Icons.add_photo_alternate_outlined,
-                color: Theme.of(context).colorScheme.onSurfaceVariant, size: 26),
+                color: context.appSub, size: 26),
         ]),
       ),
     );
@@ -694,12 +852,14 @@ class _AddBusScreenState extends State<AddBusScreen> {
   // ============================================
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Modifier le bus' : 'Ajouter un bus')
+        title: Text(_isEditing ? l10n.editBus : l10n.addBus),
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(20),
+        padding: const EdgeInsets.all(20),
         child: Form(
           key: _formKey,
           child: Column(
@@ -708,76 +868,74 @@ class _AddBusScreenState extends State<AddBusScreen> {
               // Header
               Center(
                 child: Container(
-                  padding: EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
+                    color: context.appPrimary.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     _isEditing ? Icons.edit : Icons.add_circle_outline,
                     size: 40,
-                    color: Theme.of(context).colorScheme.primary,
+                    color: context.appPrimary,
                   ),
                 ),
               ),
-              SizedBox(height: 28),
+              const SizedBox(height: 28),
 
               // ============================================
               // BUS INFO
               // ============================================
-              _SectionTitle(title: 'Informations du bus', icon: Icons.directions_bus),
-              SizedBox(height: 12),
-
-
+              _SectionTitle(title: l10n.busInfoSection, icon: Icons.directions_bus),
+              const SizedBox(height: 12),
 
               TextFormField(
                 controller: _busNameController,
                 textInputAction: TextInputAction.next,
                 textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(
-                  labelText: 'Nom du bus *',
-                  hintText: 'Ex: Bus A1',
-                  prefixIcon: Icon(Icons.label_outlined),
+                decoration: InputDecoration(
+                  labelText: '${l10n.busName} *',
+                  hintText: l10n.busNameHint,
+                  prefixIcon: const Icon(Icons.label_outlined),
                 ),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Champ requis';
+                  if (v == null || v.trim().isEmpty) return l10n.fieldRequired;
                   return null;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               TextFormField(
                 controller: _busNumberController,
                 textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Numéro du bus *',
-                  hintText: 'Ex: 00125-114-16',
-                  prefixIcon: Icon(Icons.confirmation_number_outlined),
+                decoration: InputDecoration(
+                  labelText: '${l10n.busNumber} *',
+                  hintText: l10n.busNumberHint,
+                  prefixIcon: const Icon(Icons.confirmation_number_outlined),
                 ),
                 validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Champ requis';
+                  if (v == null || v.trim().isEmpty) return l10n.fieldRequired;
                   return null;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               // ── Nombre de trajets par jour ──
-              _SectionTitle(title: 'Trajets journaliers', icon: Icons.repeat_rounded),
-              SizedBox(height: 12),
+              _SectionTitle(title: l10n.dailyTripsSection, icon: Icons.repeat_rounded),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   IconButton.filled(
                     onPressed: () => _setTripsCount(_numberOfTrips - 1),
                     icon: const Icon(Icons.remove),
                     style: IconButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      foregroundColor: Theme.of(context).colorScheme.onSurface,
+                      backgroundColor: context.appCardBg2,
+                      foregroundColor: context.appText,
                     ),
                   ),
                   Expanded(
                     child: Center(
                       child: Text(
-                        '$_numberOfTrips trajet${_numberOfTrips > 1 ? 's' : ''} / jour',
+                        l10n.tripsPerDayFmt(_numberOfTrips),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -786,13 +944,13 @@ class _AddBusScreenState extends State<AddBusScreen> {
                     onPressed: () => _setTripsCount(_numberOfTrips + 1),
                     icon: const Icon(Icons.add),
                     style: IconButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                      foregroundColor: Theme.of(context).colorScheme.primary,
+                      backgroundColor: context.appPrimary.withValues(alpha: 0.12),
+                      foregroundColor: context.appPrimary,
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               // ── Heure de départ pour chaque trajet ──
               ...List.generate(_numberOfTrips, (i) {
                 final hasTime = _tripSchedules[i] != null;
@@ -806,124 +964,205 @@ class _AddBusScreenState extends State<AddBusScreen> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         color: hasTime
-                            ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4)
-                            : Theme.of(context).colorScheme.surfaceContainerHighest,
+                            ? context.appPrimary.withValues(alpha: 0.1)
+                            : context.appCardBg2,
                         border: Border.all(
                           color: hasTime
-                              ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)
-                              : Theme.of(context).colorScheme.outlineVariant,
+                              ? context.appPrimary.withValues(alpha: 0.4)
+                              : context.appBorder,
                         ),
                       ),
                       child: Row(children: [
                         Icon(Icons.schedule_outlined,
                             color: hasTime
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.onSurfaceVariant,
+                                ? context.appPrimary
+                                : context.appSub,
                             size: 20),
-                        SizedBox(width: 12),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(
-                            'Trajet ${i + 1} — ${_tripTimeString(i)}',
+                            l10n.tripScheduleRowFmt(i + 1, _tripTimeString(i, l10n)),
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: hasTime ? FontWeight.w600 : FontWeight.normal,
                               color: hasTime
-                                  ? Theme.of(context).colorScheme.onSurface
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                                  ? context.appText
+                                  : context.appSub,
                             ),
                           ),
                         ),
                         Icon(Icons.access_time,
                             size: 18,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant),
+                            color: context.appSub),
                       ]),
                     ),
                   ),
                 );
               }),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
 
               if (_isEditing) ...[
                 Card(
                   child: SwitchListTile(
-                    title: Text('Bus actif'),
+                    title: Text(l10n.busActiveSwitchTitle),
                     subtitle: Text(
-                      _isActive ? 'Le bus est en service' : 'Le bus est hors service',
-                      style: TextStyle(color: _isActive ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.tertiary),
+                      _isActive ? l10n.busActiveSubtitle : l10n.busInactiveSubtitle,
+                      style: TextStyle(color: _isActive ? context.appPrimary : context.appOrange),
                     ),
                     value: _isActive,
                     onChanged: (v) => setState(() => _isActive = v),
                     secondary: Icon(
                       _isActive ? Icons.check_circle : Icons.cancel,
-                      color: _isActive ? Colors.green : Colors.orange,
+                      color: _isActive ? context.appGreen : context.appOrange,
                     ),
                   ),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 TextFormField(
                   controller: _currentKmController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Kilométrage actuel du bus',
-                    hintText: 'Ex: 142000',
-                    prefixIcon: Icon(Icons.speed_outlined),
+                  decoration: InputDecoration(
+                    labelText: l10n.currentKmLabel,
+                    hintText: l10n.currentKmHint,
+                    prefixIcon: const Icon(Icons.speed_outlined),
                     suffixText: 'km',
                   ),
                 ),
-                SizedBox(height: 16),
-
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _poidsController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: l10n.busWeightLabel,
+                    hintText: l10n.busWeightHint,
+                    prefixIcon: const Icon(Icons.fitness_center_outlined),
+                    suffixText: 'kg',
+                  ),
+                ),
+                const SizedBox(height: 16),
               ],
+
+              if (_isEditing) ...[
+                const SizedBox(height: 24),
+                _SectionTitle(
+                  title: l10n.ownerManagementSection,
+                  icon: Icons.admin_panel_settings_outlined,
+                  subtitle: l10n.ownerManagementSubtitle,
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  elevation: 0,
+                  color: context.appPurple.withValues(alpha: 0.05),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(color: context.appPurple.withValues(alpha: 0.2)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _driverEmailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: InputDecoration(
+                            labelText: l10n.driverEmailFieldLabel,
+                            prefixIcon: const Icon(Icons.email_outlined),
+                            filled: true,
+                            fillColor: context.appBg,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: _driverPasswordController,
+                          obscureText: _obscurePassword,
+                          decoration: InputDecoration(
+                            labelText: l10n.driverPasswordFieldLabel,
+                            prefixIcon: const Icon(Icons.lock_outlined),
+                            filled: true,
+                            fillColor: context.appBg,
+                            suffixIcon: IconButton(
+                              icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: _isReassigning ? null : _handleReassignDriver,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: context.appPurple,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: _isReassigning
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                  )
+                                : const Icon(Icons.sync_alt, size: 20),
+                            label: Text(l10n.updateCredentialsButton),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // ── Départ / Arrivée ──
+              const SizedBox(height: 24),
+              _SectionTitle(
+                title: l10n.routeSectionTitle,
+                icon: Icons.route_outlined,
+                subtitle: l10n.routeSectionSubtitle,
+              ),
+              const SizedBox(height: 12),
+              _wilayaPickerTile(isDeparture: true),
+              const SizedBox(height: 10),
+              _wilayaPickerTile(isDeparture: false),
 
               if (!_isEditing) ...[
 
-                // ── Départ / Arrivée ──
-                SizedBox(height: 24),
-                _SectionTitle(
-                  title: 'Trajet (premier départ)',
-                  icon: Icons.route_outlined,
-                  subtitle: 'Wilaya de départ et d\'arrivée du premier trajet',
-                ),
-                SizedBox(height: 12),
-                _wilayaPickerTile(isDeparture: true),
-                SizedBox(height: 10),
-                _wilayaPickerTile(isDeparture: false),
-
                 // ── Driver Account ──
-                SizedBox(height: 24),
+                const SizedBox(height: 24),
                 _SectionTitle(
-                  title: 'Compte chauffeur',
+                  title: l10n.driverAccountSection,
                   icon: Icons.person,
-                  subtitle: 'Le chauffeur utilisera ces identifiants pour se connecter',
+                  subtitle: l10n.driverAccountSubtitle,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 TextFormField(
                   controller: _driverEmailController,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'Email du chauffeur *',
-                    hintText: 'Ex: chauffeur1@transport.com',
-                    prefixIcon: Icon(Icons.email_outlined),
+                  decoration: InputDecoration(
+                    labelText: l10n.driverEmailFieldLabel,
+                    hintText: l10n.driverEmailHint,
+                    prefixIcon: const Icon(Icons.email_outlined),
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Champ requis';
+                    if (v == null || v.trim().isEmpty) return l10n.fieldRequired;
                     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(v.trim())) {
-                      return 'Email invalide';
+                      return l10n.invalidEmail;
                     }
                     return null;
                   },
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
 
                 TextFormField(
                   controller: _driverPasswordController,
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.next,
                   decoration: InputDecoration(
-                    labelText: 'Mot de passe du chauffeur *',
-                    hintText: 'Minimum 6 caractères',
-                    prefixIcon: Icon(Icons.lock_outlined),
+                    labelText: l10n.driverPasswordFieldLabel,
+                    hintText: l10n.minSixChars,
+                    prefixIcon: const Icon(Icons.lock_outlined),
                     suffixIcon: IconButton(
                       icon: Icon(_obscurePassword
                           ? Icons.visibility_off
@@ -933,144 +1172,146 @@ class _AddBusScreenState extends State<AddBusScreen> {
                     ),
                   ),
                   validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Champ requis';
-                    if (v.length < 6) return 'Minimum 6 caractères';
+                    if (v == null || v.trim().isEmpty) return l10n.fieldRequired;
+                    if (v.length < 6) return l10n.minSixChars;
                     return null;
                   },
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
 
-                // ── Salaire chauffeur ──
-                _SectionTitle(title: 'Salaire du chauffeur', icon: Icons.payments_outlined),
-                SizedBox(height: 10),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'monthly', icon: Icon(Icons.calendar_month, size: 16), label: Text('Par mois')),
-                    ButtonSegment(value: 'per_trip', icon: Icon(Icons.route, size: 16), label: Text('Par trajet')),
-                  ],
-                  selected: {_chauffeurSalaryType},
-                  onSelectionChanged: (v) => setState(() => _chauffeurSalaryType = v.first),
+              // ── Salaire chauffeur ── (create & edit)
+              const SizedBox(height: 24),
+              _SectionTitle(title: l10n.driverSalarySection, icon: Icons.payments_outlined),
+              const SizedBox(height: 10),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'monthly', icon: const Icon(Icons.calendar_month, size: 16), label: Text(l10n.perMonthLabel)),
+                  ButtonSegment(value: 'per_trip', icon: const Icon(Icons.route, size: 16), label: Text(l10n.perTripLabel)),
+                ],
+                selected: {_chauffeurSalaryType},
+                onSelectionChanged: (v) => setState(() => _chauffeurSalaryType = v.first),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _salaryController,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: _chauffeurSalaryType == 'monthly'
+                      ? l10n.chauffeurSalaryMonthlyFieldLabel
+                      : l10n.chauffeurSalaryPerTripFieldLabel,
+                  hintText: l10n.salaryHint,
+                  prefixIcon: const Icon(Icons.payments_outlined),
+                  suffixText: 'DA',
                 ),
-                SizedBox(height: 10),
-                TextFormField(
-                  controller: _salaryController,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: _chauffeurSalaryType == 'monthly'
-                        ? 'Salaire du chauffeur (par mois) *'
-                        : 'Salaire du chauffeur (par trajet) *',
-                    hintText: 'Ex: 50000',
-                    prefixIcon: const Icon(Icons.payments_outlined),
-                    suffixText: 'DA',
-                  ),
-                  validator: (v) {
-                    if (v == null || v.trim().isEmpty) return 'Champ requis';
-                    if (int.tryParse(v.trim()) == null) return 'Nombre invalide';
-                    return null;
-                  },
-                ),
-                SizedBox(height: 16),
+                validator: (v) {
+                  if (v != null && v.trim().isNotEmpty && int.tryParse(v.trim()) == null) {
+                    return l10n.invalidNumber;
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
 
-                // ── Salaire receveur ──
-                _SectionTitle(title: 'Part du receveur', icon: Icons.people_outlined),
-                SizedBox(height: 10),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(value: 'monthly', icon: Icon(Icons.calendar_month, size: 16), label: Text('Par mois')),
-                    ButtonSegment(value: 'per_trip', icon: Icon(Icons.route, size: 16), label: Text('Par trajet')),
-                  ],
-                  selected: {_receveurSalaryType},
-                  onSelectionChanged: (v) => setState(() => _receveurSalaryType = v.first),
+              // ── Salaire receveur ── (create & edit)
+              _SectionTitle(title: l10n.collectorShareSection, icon: Icons.people_outlined),
+              const SizedBox(height: 10),
+              SegmentedButton<String>(
+                segments: [
+                  ButtonSegment(value: 'monthly', icon: const Icon(Icons.calendar_month, size: 16), label: Text(l10n.perMonthLabel)),
+                  ButtonSegment(value: 'per_trip', icon: const Icon(Icons.route, size: 16), label: Text(l10n.perTripLabel)),
+                ],
+                selected: {_receveurSalaryType},
+                onSelectionChanged: (v) => setState(() => _receveurSalaryType = v.first),
+              ),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _receveurController,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: _receveurSalaryType == 'monthly'
+                      ? l10n.collectorShareMonthlyLabel
+                      : l10n.collectorSharePerTripLabel,
+                  hintText: l10n.collectorShareHint,
+                  prefixIcon: const Icon(Icons.people_outlined),
+                  suffixText: 'DA',
                 ),
-                SizedBox(height: 10),
-                TextFormField(
-                  controller: _receveurController,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: _receveurSalaryType == 'monthly'
-                        ? 'Part du receveur (par mois)'
-                        : 'Part du receveur (par trajet)',
-                    hintText: 'Ex: 15000',
-                    prefixIcon: const Icon(Icons.people_outlined),
-                    suffixText: 'DA',
-                  ),
-                ),
-                SizedBox(height: 12),
+              ),
 
+              if (!_isEditing) ...[
+                const SizedBox(height: 12),
                 Container(
-                  padding: EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondaryContainer,
+                    color: context.appPurple.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-
                   ),
                   child: Row(children: [
-                    Icon(Icons.info_outline, color: Theme.of(context).colorScheme.secondary, size: 18),
-                    SizedBox(width: 10),
+                    Icon(Icons.info_outline, color: context.appPurple, size: 18),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Communiquez cet email et mot de passe au chauffeur.',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSecondaryContainer, fontSize: 12),
+                        l10n.shareCredentialsWithDriver,
+                        style: TextStyle(color: context.appText, fontSize: 12),
                       ),
                     ),
                   ]),
                 ),
 
                 // ── Documents obligatoires ──
-                SizedBox(height: 24),
+                const SizedBox(height: 24),
                 _SectionTitle(
-                  title: 'Documents obligatoires',
+                  title: l10n.requiredDocsSection,
                   icon: Icons.folder_open,
-                  subtitle: 'Ces documents seront vérifiés par l\'administrateur',
+                  subtitle: l10n.requiredDocsSectionSubtitle,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 _documentPicker(
-                  label: 'Validation de ligne',
+                  label: l10n.lineValidation,
                   icon: Icons.route,
-                  color: Colors.indigo,
+                  color: context.appPrimary,
                   file: _ligneValidationFile,
                   onTap: () => _pickImage(true),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 _documentPicker(
-                  label: 'Assurance',
+                  label: l10n.insurance,
                   icon: Icons.shield_outlined,
-                  color: Colors.teal,
+                  color: context.appAccent,
                   file: _assuranceFile,
                   onTap: () => _pickImage(false),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 InkWell(
                   onTap: _pickAssuranceExpiryDate,
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    padding: EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-
                       borderRadius: BorderRadius.circular(20),
                       color: _insuranceEndDate != null
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : Theme.of(context).colorScheme.surfaceContainerHighest,
+                          ? context.appPrimary.withValues(alpha: 0.12)
+                          : context.appCardBg2,
                     ),
                     child: Row(children: [
                       Icon(Icons.event_outlined,
                           color: _insuranceEndDate != null
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant),
-                      SizedBox(width: 12),
+                              ? context.appPrimary
+                              : context.appSub),
+                      const SizedBox(width: 12),
                       Text(
                         _insuranceEndDate != null
-                            ? 'Expiration assurance : ${DateFormat('dd/MM/yyyy').format(_insuranceEndDate!)}'
-                            : 'Date d\'expiration de l\'assurance (optionnel)',
+                            ? l10n.insuranceExpirySelectedFmt(DateFormat('dd/MM/yyyy').format(_insuranceEndDate!))
+                            : l10n.insuranceExpiryOptional,
                         style: TextStyle(
                           color: _insuranceEndDate != null
-                              ? Theme.of(context).colorScheme.onSurface
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                              ? context.appText
+                              : context.appSub,
                         ),
                       ),
                     ]),
@@ -1078,91 +1319,90 @@ class _AddBusScreenState extends State<AddBusScreen> {
                 ),
 
                 // ── Dernière vidange (optionnel) ──
-                SizedBox(height: 24),
+                const SizedBox(height: 24),
                 _SectionTitle(
-                  title: 'Dernière vidange (optionnel)',
+                  title: l10n.lastOilChangeSectionTitle,
                   icon: Icons.oil_barrel_outlined,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 InkWell(
                   onTap: _pickVidangeDate,
                   borderRadius: BorderRadius.circular(20),
                   child: Container(
-                    padding: EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-
                       borderRadius: BorderRadius.circular(20),
                       color: _lastVidangeDate != null
-                          ? Theme.of(context).colorScheme.tertiaryContainer
-                          : Theme.of(context).colorScheme.surfaceContainerHighest,
+                          ? context.appAccent.withValues(alpha: 0.12)
+                          : context.appCardBg2,
                     ),
                     child: Row(children: [
                       Icon(Icons.calendar_today,
                           color: _lastVidangeDate != null
-                              ? Theme.of(context).colorScheme.tertiary
-                              : Theme.of(context).colorScheme.onSurfaceVariant),
-                      SizedBox(width: 12),
+                              ? context.appAccent
+                              : context.appSub),
+                      const SizedBox(width: 12),
                       Text(
                         _lastVidangeDate != null
                             ? DateFormat('dd/MM/yyyy').format(_lastVidangeDate!)
-                            : 'Choisir la date de vidange',
+                            : l10n.oilChangeDateHint,
                         style: TextStyle(
                           color: _lastVidangeDate != null
-                              ? Theme.of(context).colorScheme.onSurface
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                              ? context.appText
+                              : context.appSub,
                         ),
                       ),
                     ]),
                   ),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
 
                 TextFormField(
                   controller: _lastVidangeKmController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Kilométrage à la vidange',
-                    hintText: 'Ex: 125000',
-                    prefixIcon: Icon(Icons.speed),
+                  decoration: InputDecoration(
+                    labelText: l10n.oilChangeKmLabel,
+                    hintText: l10n.oilChangeKmHint,
+                    prefixIcon: const Icon(Icons.speed),
                     suffixText: 'km',
                   ),
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 TextFormField(
                   controller: _currentKmController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Kilométrage actuel du bus',
-                    hintText: 'Ex: 142000',
-                    prefixIcon: Icon(Icons.speed_outlined),
+                  decoration: InputDecoration(
+                    labelText: l10n.currentKmLabel,
+                    hintText: l10n.currentKmHint,
+                    prefixIcon: const Icon(Icons.speed_outlined),
                     suffixText: 'km',
                   ),
                 ),
               ],
 
-              SizedBox(height: 32),
+              const SizedBox(height: 32),
 
               // Save button
               ElevatedButton.icon(
                 onPressed: (_isLoading || _uploadingDocs) ? null : _saveBus,
                 icon: (_isLoading || _uploadingDocs)
-                    ? SizedBox(
+                    ? const SizedBox(
                         height: 20, width: 20,
                         child: BusLoadingIndicator(strokeWidth: 2))
                     : Icon(_isEditing ? Icons.save : Icons.add),
                 label: Text(
                   _uploadingDocs
-                      ? 'Upload en cours...'
+                      ? l10n.uploadingLabel
                       : _isLoading
-                          ? 'Création...'
+                          ? l10n.creatingBusLabel
                           : _isEditing
-                              ? 'Enregistrer les modifications'
-                              : 'Créer le bus et le compte chauffeur',
-                  style: TextStyle(fontSize: 15),
+                              ? l10n.saveChangesButton
+                              : l10n.createBusAndDriverButton,
+                  style: const TextStyle(fontSize: 15),
                 ),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 20),
             ],
           ),
         ),
@@ -1188,8 +1428,8 @@ class _SectionTitle extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
-            SizedBox(width: 8),
+            Icon(icon, size: 20, color: context.appPrimary),
+            const SizedBox(width: 8),
             Text(title,
                 style: Theme.of(context)
                     .textTheme
@@ -1198,13 +1438,219 @@ class _SectionTitle extends StatelessWidget {
           ],
         ),
         if (subtitle != null) ...[
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Padding(
-            padding: EdgeInsets.only(left: 28),
+            // EdgeInsetsDirectional so start = right in RTL
+            padding: const EdgeInsetsDirectional.only(start: 28),
             child: Text(subtitle!,
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                style: TextStyle(color: context.appSub, fontSize: 12)),
           ),
         ],
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+
+class _SuccessDialog extends StatelessWidget {
+  final String busName;
+  final String driverEmail;
+  final String tempPassword;
+  final AppLocalizations l10n;
+
+  const _SuccessDialog({
+    required this.busName,
+    required this.driverEmail,
+    required this.tempPassword,
+    required this.l10n,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ── Success icon ──
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: context.appPrimary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.check_circle_outline_rounded,
+                  size: 48,
+                  color: context.appPrimary,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Title ──
+              Text(
+                l10n.busCreatedSuccess,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                l10n.busCreatedDialogSubtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: context.appSub,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+
+              // ── Credential card ──
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: context.appCardBg2,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: context.appBorder),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _CredentialRow(
+                      icon: Icons.directions_bus_outlined,
+                      label: l10n.busIdDialogLabel,
+                      value: busName,
+                    ),
+                    const SizedBox(height: 14),
+                    _CredentialRow(
+                      icon: Icons.email_outlined,
+                      label: l10n.driverEmailDialogLabel,
+                      value: driverEmail,
+                    ),
+                    const SizedBox(height: 14),
+                    _CredentialRow(
+                      icon: Icons.lock_outlined,
+                      label: l10n.temporaryPasswordLabel,
+                      value: tempPassword,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // ── Copy button ──
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    final text =
+                        '${l10n.busIdDialogLabel}: $busName\n'
+                        '${l10n.driverEmailDialogLabel}: $driverEmail\n'
+                        '${l10n.temporaryPasswordLabel}: $tempPassword';
+                    Clipboard.setData(ClipboardData(text: text));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(l10n.credentialsCopied),
+                        backgroundColor: context.appPrimary,
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: context.appPrimary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.copy_rounded, size: 20),
+                  label: Text(
+                    l10n.copyCredentials,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+
+              // ── Close button ──
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    side: BorderSide(color: context.appBorder),
+                  ),
+                  child: Text(
+                    l10n.closeLabel,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: context.appText,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CredentialRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _CredentialRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: context.appSub),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: context.appSub,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              SelectableText(
+                value,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: context.appText,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

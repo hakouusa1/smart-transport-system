@@ -46,9 +46,16 @@ class _StaggeredListItemState extends State<StaggeredListItem> with SingleTicker
       if (disableAnimations) {
         _controller.value = 1.0;
       } else {
-        // Cap index at 8 to avoid long waits
-        final clampedIndex = widget.index.clamp(0, 8);
-        Future.delayed(Duration(milliseconds: clampedIndex * 60), () {
+        final index = widget.index;
+        final effectiveIndex = index.clamp(0, 12);
+        
+        final delay = Duration(
+          milliseconds: index <= 6 
+              ? index * 100 
+              : 600 + (index.clamp(7, 12) - 6) * 20,
+        );
+
+        Future.delayed(delay, () {
           if (mounted) {
             _controller.forward();
           }

@@ -1,18 +1,19 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/bus_model.dart';
 import '../services/bus_service.dart';
 import 'vidange_details_screen.dart';
 import 'assurance_details_screen.dart';
 import 'salary_details_screen.dart';
 import '../theme_notifier.dart';
+import '../l10n/app_localizations.dart';
 import '../widgets/staggered_list_item.dart';
 import '../widgets/pulsing_dot.dart';
 import '../widgets/bus_loading_indicator.dart';
-
-const _vidangeIntervalKm = 10000;
+import '../constants.dart';
+import '../app_settings_notifier.dart';
 
 enum _AlertType { assurance, vidange, salary }
 
@@ -21,7 +22,8 @@ class _AlertItem {
   final _AlertType type;
   final int? daysUntilExpiry;
   final int? kmRemaining;
-  final String? salaryLabel;
+  // Keys: 'driver', 'collector' — translated in card builder
+  final List<String>? salaryPositionKeys;
   final int? daysUntilSalary;
 
   const _AlertItem({
@@ -29,14 +31,33 @@ class _AlertItem {
     required this.type,
     this.daysUntilExpiry,
     this.kmRemaining,
-    this.salaryLabel,
+    this.salaryPositionKeys,
     this.daysUntilSalary,
   });
 
-  int get urgencyScore {
-    if (type == _AlertType.assurance) return daysUntilExpiry ?? 999;
-    if (type == _AlertType.vidange)   return kmRemaining    ?? 999;
-    return daysUntilSalary ?? 999;
+  /// Normalized urgency on a 0–100 scale (lower = more urgent).
+  /// This allows fair comparison across alert types that use
+  /// different units (days vs km).
+  double get urgencyScore {
+    if (type == _AlertType.assurance) {
+      // Insurance: 0 days left → 0 (critical), ≥365 days → 100 (safe)
+      final days = daysUntilExpiry;
+      if (days == null) return 0; // unknown = treat as critical
+      if (days < 0) return 0;    // already expired
+      return (days / 365.0 * 100).clamp(0, 100);
+    }
+    if (type == _AlertType.vidange) {
+      // Oil change: 0 km left → 0 (critical), ≥10 000 km → 100 (safe)
+      final km = kmRemaining;
+      if (km == null) return 0;
+      if (km <= 0) return 0;
+      return (km / appSettingsNotifier.value.vidangeIntervalKm * 100).clamp(0, 100);
+    }
+    // Salary: 0 days left → 0 (critical), ≥30 days → 100 (safe)
+    final days = daysUntilSalary;
+    if (days == null) return 100; // no salary date = not urgent
+    if (days <= 0) return 0;
+    return (days / 30.0 * 100).clamp(0, 100);
   }
 }
 
@@ -48,74 +69,65 @@ class AlertsScreen extends StatefulWidget {
 }
 
 class _AlertsScreenState extends State<AlertsScreen> {
-  Future<List<_AlertItem>>? _alertsFuture;
+  List<_AlertItem> _alertItems = [];
   List<Bus> _lastBuses = [];
+  bool _isLoading = true;
+  StreamSubscription<List<Bus>>? _busSub;
 
   void _updateAlerts(List<Bus> buses) {
-    _lastBuses = buses;
-    _alertsFuture = _buildAlertsFuture(buses);
+    final acceptedBuses = buses.where((b) => b.isApproved).toList();
+    _lastBuses = acceptedBuses;
+    _alertItems = _buildAlerts(acceptedBuses);
   }
 
-  Future<List<_AlertItem>> _buildAlertsFuture(List<Bus> buses) async {
-    final now   = DateTime.now();
-    final items = <_AlertItem>[];
+  List<_AlertItem> _buildAlerts(List<Bus> buses) {
+    final now = DateTime.now();
+    final allItems = <_AlertItem>[];
 
     for (final bus in buses) {
       // 1. Assurance
       if (bus.insuranceEndDate != null) {
-        items.add(_AlertItem(
+        allItems.add(_AlertItem(
             bus: bus,
             type: _AlertType.assurance,
             daysUntilExpiry: bus.insuranceEndDate!.difference(now).inDays));
       } else {
-        items.add(_AlertItem(
+        allItems.add(_AlertItem(
             bus: bus, type: _AlertType.assurance, daysUntilExpiry: null));
       }
 
-      // 2. Vidange
-      Query query = FirebaseFirestore.instance
-          .collection('trips')
-          .where('busId', isEqualTo: bus.busId);
-      if (bus.lastVidangeDate != null) {
-        query = query.where('timestamp',
-            isGreaterThan: Timestamp.fromDate(bus.lastVidangeDate!));
-      }
-      double traveled = 0.0;
-      try {
-        final agg = await query.aggregate(sum('distanceKm')).get();
-        traveled = agg.getSum('distanceKm') ?? 0.0;
-      } catch (e) {
-        debugPrint('Vidange distance error: $e');
-      }
-      items.add(_AlertItem(
+      // 2. Vidange — derived from odometer fields already on the bus document;
+      //    no Firestore query needed (eliminates the prior N aggregate reads).
+      final traveled = (bus.currentKm ?? 0) - (bus.lastVidangeKm ?? 0);
+      allItems.add(_AlertItem(
           bus: bus,
           type: _AlertType.vidange,
-          kmRemaining: (_vidangeIntervalKm - traveled).toInt().clamp(0, _vidangeIntervalKm)));
+          kmRemaining: (appSettingsNotifier.value.vidangeIntervalKm - traveled).clamp(0, appSettingsNotifier.value.vidangeIntervalKm)));
 
-      // 3. Salary
-      final positions = <String>[];
-      if (bus.driverId.isNotEmpty) positions.add('Chauffeur');
+      // 3. Salary — store internal keys, translate in card builder
+      final positionKeys = <String>[];
+      if (bus.driverId.isNotEmpty) positionKeys.add('driver');
       if (bus.recipientSalary != null && bus.recipientSalary! > 0) {
-        positions.add('Receveur');
+        positionKeys.add('collector');
       }
 
-      if (positions.isNotEmpty) {
+      if (positionKeys.isNotEmpty) {
         DateTime nextSalary = DateTime(now.year, now.month + 1, 1);
         if (bus.lastSalaryDate != null &&
             now.difference(bus.lastSalaryDate!).inDays < 20) {
           nextSalary = DateTime(now.year, now.month + 2, 1);
         }
-        items.add(_AlertItem(
+        allItems.add(_AlertItem(
           bus: bus,
           type: _AlertType.salary,
-          salaryLabel: 'Salaires: ${positions.join(' & ')}',
+          salaryPositionKeys: positionKeys,
           daysUntilSalary: nextSalary.difference(now).inDays,
         ));
       }
     }
 
-    items.sort((a, b) => a.urgencyScore.compareTo(b.urgencyScore));
-    return items;
+    allItems.sort((a, b) => a.urgencyScore.compareTo(b.urgencyScore));
+    return allItems;
   }
 
   // ── Semantic color helpers ──
@@ -127,7 +139,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   Color _vidangeColor(int? km) {
     if (km == null || km <= 0)    return context.appRed;
-    if (km <= 1000)               return context.appOrange;
+    if (km <= kVidangeWarnKm)     return context.appOrange;
     return context.appGreen;
   }
 
@@ -140,6 +152,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
   // ── Card builders ──
   Widget _buildAssuranceCard(BuildContext context, _AlertItem item) {
+    final l10n = AppLocalizations.of(context);
     final bus   = item.bus;
     final days  = item.daysUntilExpiry;
     final color = _assuranceColor(days);
@@ -147,18 +160,18 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final String subtitle;
     final String badge;
     if (days == null) {
-      subtitle = 'Date d\'expiration non renseignée';
-      badge    = 'Inconnue';
+      subtitle = l10n.insuranceDateUnknown;
+      badge    = l10n.insuranceBadgeUnknown;
     } else if (days < 0) {
-      subtitle = 'Expirée depuis ${-days} jour${(-days) > 1 ? 's' : ''}';
-      badge    = 'Expirée';
+      subtitle = l10n.insuranceExpiredSinceFmt(-days);
+      badge    = l10n.insuranceBadgeExpired;
     } else if (days == 0) {
-      subtitle = 'Expire aujourd\'hui !';
-      badge    = 'Aujourd\'hui';
+      subtitle = l10n.insuranceExpiresToday;
+      badge    = l10n.badgeToday;
     } else {
       final exp = DateFormat('dd/MM/yyyy').format(bus.insuranceEndDate!);
-      subtitle = 'Expire le $exp · dans $days jour${days > 1 ? 's' : ''}';
-      badge    = '$days j';
+      subtitle = l10n.insuranceExpiresFmt(exp, days);
+      badge    = l10n.daysBadgeFmt(days);
     }
 
     final String urgencyLevel;
@@ -176,7 +189,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         iconColor: color,
         title: bus.busName.isNotEmpty ? bus.busName : 'Bus ${bus.busNumber}',
         subtitle: subtitle,
-        label: 'Assurance',
+        label: l10n.insuranceLabel,
         labelColor: context.appAccent,
         badge: badge,
         badgeColor: color,
@@ -186,6 +199,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   Widget _buildVidangeCard(BuildContext context, _AlertItem item) {
+    final l10n = AppLocalizations.of(context);
     final bus   = item.bus;
     final km    = item.kmRemaining;
     final color = _vidangeColor(km);
@@ -193,22 +207,22 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final String subtitle;
     final String badge;
     if (km == null) {
-      subtitle = 'Kilométrage non renseigné';
-      badge    = 'Inconnu';
+      subtitle = l10n.oilChangeMileageUnknown;
+      badge    = l10n.oilChangeBadgeUnknown;
     } else if (km < 0) {
-      subtitle = 'Dépassé de ${-km} km !';
-      badge    = '+${-km} km';
+      subtitle = l10n.oilChangeExceededFmt(-km);
+      badge    = l10n.oilChangeExceededBadgeFmt(-km);
     } else if (km == 0) {
-      subtitle = 'Vidange requise maintenant';
+      subtitle = l10n.oilChangeRequiredNow;
       badge    = '0 km';
     } else {
-      subtitle = 'Prochaine vidange dans $km km';
+      subtitle = l10n.oilChangeRemainingFmt(km);
       badge    = '$km km';
     }
 
     final String urgencyLevel;
     if (km == null || km <= 0) urgencyLevel = 'critical';
-    else if (km <= 1000) urgencyLevel = 'high';
+    else if (km <= kVidangeWarnKm) urgencyLevel = 'high';
     else urgencyLevel = 'normal';
 
     return GestureDetector(
@@ -218,14 +232,14 @@ class _AlertsScreenState extends State<AlertsScreen> {
             builder: (_) => VidangeDetailsScreen(
                 bus: bus,
                 kmRemaining: km,
-                intervalKm: _vidangeIntervalKm)),
+                intervalKm: appSettingsNotifier.value.vidangeIntervalKm)),
       ).then((_) => setState(() => _updateAlerts(_lastBuses))),
       child: _AlertCard(
         icon: Icons.oil_barrel_outlined,
         iconColor: color,
         title: bus.busName.isNotEmpty ? bus.busName : 'Bus ${bus.busNumber}',
         subtitle: subtitle,
-        label: 'Vidange',
+        label: l10n.oilChangeLabel,
         labelColor: context.appOrange,
         badge: badge,
         badgeColor: color,
@@ -235,6 +249,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   Widget _buildSalaryCard(BuildContext context, _AlertItem item) {
+    final l10n = AppLocalizations.of(context);
     final bus   = item.bus;
     final days  = item.daysUntilSalary;
     final color = _salaryColor(days);
@@ -242,15 +257,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
     final String subtitle;
     final String badge;
     if (days == null) {
-      subtitle = 'Date inconnue';
-      badge    = 'Inconnu';
+      subtitle = l10n.salaryDateUnknown;
+      badge    = l10n.salaryBadgeUnknown;
     } else if (days == 0) {
-      subtitle = 'Salaire à verser aujourd\'hui !';
-      badge    = 'Aujourd\'hui';
+      subtitle = l10n.salaryDueToday;
+      badge    = l10n.badgeToday;
     } else {
       final dt  = DateTime.now().add(Duration(days: days));
-      subtitle  = 'Prévu le ${DateFormat('dd/MM/yyyy').format(dt)} · dans $days jour${days > 1 ? 's' : ''}';
-      badge     = '$days j';
+      subtitle  = l10n.salaryScheduledFmt(DateFormat('dd/MM/yyyy').format(dt), days);
+      badge     = l10n.daysBadgeFmt(days);
     }
 
     final String urgencyLevel;
@@ -258,6 +273,11 @@ class _AlertsScreenState extends State<AlertsScreen> {
     else if (days <= 3) urgencyLevel = 'critical';
     else if (days <= 10) urgencyLevel = 'high';
     else urgencyLevel = 'normal';
+
+    final positionNames = (item.salaryPositionKeys ?? ['driver'])
+        .map((k) => k == 'driver' ? l10n.driverLabel : l10n.collectorLabel)
+        .join(' & ');
+    final label = l10n.salaryLabelFmt(positionNames);
 
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -271,7 +291,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
         iconColor: color,
         title: bus.busName.isNotEmpty ? bus.busName : 'Bus ${bus.busNumber}',
         subtitle: subtitle,
-        label: item.salaryLabel ?? 'Salaires',
+        label: label,
         labelColor: context.appPrimary,
         badge: badge,
         badgeColor: color,
@@ -281,7 +301,35 @@ class _AlertsScreenState extends State<AlertsScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Pre-populate immediately if BusService already has data (avoids missing
+    // the initial Firestore emission when DashboardScreen subscribed first).
+    final cached = BusService().latestBuses;
+    if (cached != null) {
+      _updateAlerts(cached);
+      _isLoading = false;
+    }
+    _busSub = BusService().getBuses().listen(
+      (buses) {
+        if (mounted) setState(() { _updateAlerts(buses); _isLoading = false; });
+      },
+      onError: (_) {
+        if (mounted) setState(() => _isLoading = false);
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _busSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -290,37 +338,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
       ),
       child: Scaffold(
         backgroundColor: context.appBg,
-        body: StreamBuilder<List<Bus>>(
-          stream: BusService().getBuses(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                _alertsFuture == null) {
+        body: Builder(
+          builder: (context) {
+            if (_isLoading) {
               return Center(
                   child: BusLoadingIndicator(
                       color: context.appPurple, strokeWidth: 2.5));
             }
-            if (snapshot.hasError) {
-              return Center(
-                  child: Text('Erreur: ${snapshot.error}',
-                      style: TextStyle(color: context.appSub)));
-            }
 
-            final buses = snapshot.data ?? [];
-            if (buses.toString() != _lastBuses.toString()) {
-              _lastBuses    = buses;
-              _alertsFuture = _buildAlertsFuture(buses);
-            }
-
-            return FutureBuilder<List<_AlertItem>>(
-              future: _alertsFuture,
-              builder: (context, alertSnap) {
-                if (alertSnap.connectionState == ConnectionState.waiting) {
-                  return Center(
-                      child: BusLoadingIndicator(
-                          color: context.appPurple, strokeWidth: 2.5));
-                }
-
-                final alerts = alertSnap.data ?? [];
+            final alerts = _alertItems;
 
                 return CustomScrollView(
                   slivers: [
@@ -339,7 +365,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
                                 Icon(Icons.notifications_active_outlined,
                                     color: context.appDark, size: 26),
                                 const SizedBox(width: 10),
-                                Text('Alertes',
+                                Text(l10n.alertsTitle,
                                     style: TextStyle(
                                         fontSize: 22,
                                         fontWeight: FontWeight.w700,
@@ -347,46 +373,48 @@ class _AlertsScreenState extends State<AlertsScreen> {
                               ]),
                               const SizedBox(height: 6),
                               Text(
-                                'Assurances, vidanges et salaires — du plus urgent au moins urgent',
+                                l10n.alertsSubtitle,
                                 style: TextStyle(
                                     fontSize: 12, color: context.appSub),
                               ),
                               const SizedBox(height: 16),
                               // ── Summary chips ──
-                              Row(children: [
-                                _SummaryChip(
-                                  count: alerts
-                                      .where((a) =>
-                                          a.type == _AlertType.assurance &&
-                                          (a.daysUntilExpiry == null ||
-                                              a.daysUntilExpiry! < 30))
-                                      .length,
-                                  label: 'Assurances',
-                                  icon: Icons.shield_outlined,
-                                ),
-                                const SizedBox(width: 8),
-                                _SummaryChip(
-                                  count: alerts
-                                      .where((a) =>
-                                          a.type == _AlertType.vidange &&
-                                          (a.kmRemaining == null ||
-                                              a.kmRemaining! <= 1000))
-                                      .length,
-                                  label: 'Vidanges',
-                                  icon: Icons.oil_barrel_outlined,
-                                ),
-                                const SizedBox(width: 8),
-                                _SummaryChip(
-                                  count: alerts
-                                      .where((a) =>
-                                          a.type == _AlertType.salary &&
-                                          a.daysUntilSalary != null &&
-                                          a.daysUntilSalary! <= 10)
-                                      .length,
-                                  label: 'Salaires',
-                                  icon: Icons.payments_outlined,
-                                ),
-                              ]),
+                              Wrap(
+                                spacing: 8.0,
+                                runSpacing: 4.0,
+                                children: [
+                                  _SummaryChip(
+                                    count: alerts
+                                        .where((a) =>
+                                            a.type == _AlertType.assurance &&
+                                            (a.daysUntilExpiry == null ||
+                                                a.daysUntilExpiry! < 30))
+                                        .length,
+                                    label: l10n.chipInsuranceLabel,
+                                    icon: Icons.shield_outlined,
+                                  ),
+                                  _SummaryChip(
+                                    count: alerts
+                                        .where((a) =>
+                                            a.type == _AlertType.vidange &&
+                                            (a.kmRemaining == null ||
+                                                a.kmRemaining! <= kVidangeWarnKm))
+                                        .length,
+                                    label: l10n.chipOilChangeLabel,
+                                    icon: Icons.oil_barrel_outlined,
+                                  ),
+                                  _SummaryChip(
+                                    count: alerts
+                                        .where((a) =>
+                                            a.type == _AlertType.salary &&
+                                            a.daysUntilSalary != null &&
+                                            a.daysUntilSalary! <= 10)
+                                        .length,
+                                    label: l10n.chipSalariesLabel,
+                                    icon: Icons.payments_outlined,
+                                  ),
+                                ],
+                              ),
                             ]),
                       ),
                     ),
@@ -394,24 +422,48 @@ class _AlertsScreenState extends State<AlertsScreen> {
                     if (alerts.isEmpty)
                       SliverFillRemaining(
                         child: Center(
-                          child: Column(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.check_circle_outline,
-                                    size: 64,
-                                    color: context.appGreen
-                                        .withValues(alpha: 0.4)),
-                                const SizedBox(height: 16),
-                                Text('Aucun bus enregistré',
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: context.appDark)),
-                                const SizedBox(height: 6),
-                                Text('Ajoutez des bus pour voir leurs alertes.',
-                                    style:
-                                        TextStyle(color: context.appSub)),
-                              ]),
+                              children: _lastBuses.isEmpty
+                                  ? [
+                                      Icon(Icons.directions_bus_outlined,
+                                          size: 64,
+                                          color: context.appSub
+                                              .withValues(alpha: 0.4)),
+                                      const SizedBox(height: 16),
+                                      Text(l10n.noBusesFound,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: context.appText)),
+                                      const SizedBox(height: 6),
+                                      Text(l10n.addBusAction,
+                                          textAlign: TextAlign.center,
+                                          style:
+                                              TextStyle(color: context.appSub)),
+                                    ]
+                                  : [
+                                      Icon(Icons.verified_user,
+                                          size: 64,
+                                          color: context.appGreen),
+                                      const SizedBox(height: 16),
+                                      Text(l10n.allBusesHealthy,
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                              color: context.appText)),
+                                      const SizedBox(height: 6),
+                                      Text(l10n.noAlertsMessage,
+                                          textAlign: TextAlign.center,
+                                          style:
+                                              TextStyle(color: context.appSub)),
+                                    ],
+                            ),
+                          ),
                         ),
                       )
                     else
@@ -444,8 +496,6 @@ class _AlertsScreenState extends State<AlertsScreen> {
                       ),
                   ],
                 );
-              },
-            );
           },
         ),
       ),
@@ -454,7 +504,7 @@ class _AlertsScreenState extends State<AlertsScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SUMMARY CHIP — horizontal filter chips at the top
+// SUMMARY CHIP
 // ─────────────────────────────────────────────────────────────────────────────
 class _SummaryChip extends StatelessWidget {
   final int    count;
@@ -470,14 +520,14 @@ class _SummaryChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUrgent = count > 0;
-    // Chip bg: surface3 (#2C2C2C dark / #E8E8E8 light) — visible against scaffold
-    // When urgent: tint with red at 15%
     final bg = isUrgent
         ? context.appRed.withValues(alpha: 0.14)
         : context.appCardBg3;
     final fg = isUrgent ? context.appRed : context.appSub;
+    final message = '$count $label';
 
-    return Expanded(
+    return Tooltip(
+      message: message,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
@@ -489,25 +539,25 @@ class _SummaryChip extends StatelessWidget {
                 : context.appBorder,
           ),
         ),
-        child: Row(children: [
-          Icon(icon, color: fg, size: 13),
-          const SizedBox(width: 5),
-          Expanded(
-            child: Text(
-              '$count $label',
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: fg, size: 13),
+            const SizedBox(width: 5),
+            Text(
+              message,
               style: TextStyle(
                   color: fg, fontSize: 10, fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ALERT CARD — dark surface, jewel-tone badges
+// ALERT CARD
 // ─────────────────────────────────────────────────────────────────────────────
 class _AlertCard extends StatelessWidget {
   final IconData icon;
@@ -537,7 +587,6 @@ class _AlertCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        // Dark surface — never pure white
         color: context.appCardBg,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: context.appBorder),
@@ -579,13 +628,11 @@ class _AlertCard extends StatelessWidget {
                   style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                      // Off-White for dark, near-black for light
                       color: context.appDark),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 8),
-              // ── Label tag — 20% opacity fill, 100% opacity text ──
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -608,7 +655,7 @@ class _AlertCard extends StatelessWidget {
 
         const SizedBox(width: 10),
 
-        // ── Badge (countdown / km remaining) ──
+        // ── Badge ──
         Container(
           padding:
               const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

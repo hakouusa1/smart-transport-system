@@ -10,6 +10,7 @@ class Bus {
   final DateTime createdAt;
   final String ownerId;
   final String driverId;
+  final num? salary;
   final num? recipientSalary;
   final String driverStatus;
 
@@ -40,12 +41,14 @@ class Bus {
   final DateTime? lastVidangeDate;
   final int? lastVidangeKm;
   final int? currentKm;
+  final int? weightKg;
   final DateTime? lastSalaryDate;
 
   // Schedule
   final String? scheduleTime; // legacy single time "HH:mm"
   final int numberOfTrips;
   final List<String> tripSchedules; // ["HH:mm", "HH:mm", ...]
+  final int currentTripIndex;
 
   // Salary types
   final String chauffeurSalaryType; // 'monthly' | 'per_trip'
@@ -61,6 +64,7 @@ class Bus {
     DateTime? createdAt,
     this.ownerId = '',
     this.driverId = '',
+    this.salary,
     this.recipientSalary,
     this.driverStatus = 'offline',
     this.departureLat,
@@ -79,12 +83,14 @@ class Bus {
     this.lastVidangeDate,
     this.lastVidangeKm,
     this.currentKm,
+    this.weightKg,
     this.lastSalaryDate,
     this.scheduleTime,
     this.numberOfTrips = 1,
     this.tripSchedules = const [],
     this.chauffeurSalaryType = 'monthly',
     this.receveurSalaryType = 'monthly',
+    this.currentTripIndex = 0,
   }) : createdAt = createdAt ?? DateTime.now();
 
   List<String> get allSchedules {
@@ -104,6 +110,7 @@ class Bus {
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       ownerId: map['ownerId'] ?? '',
       driverId: map['driverId'] ?? '',
+      salary: map['salary'] as num?,
       recipientSalary: map['recipient'] as num?,
       driverStatus: map['driverStatus'] ?? 'offline',
       departureLat: (map['departureLat'] as num?)?.toDouble(),
@@ -123,12 +130,14 @@ class Bus {
       lastVidangeDate: (map['lastVidangeDate'] as Timestamp?)?.toDate(),
       lastVidangeKm: (map['lastVidangeKm'] as num?)?.toInt(),
       currentKm: (map['currentKm'] as num?)?.toInt(),
+      weightKg: (map['poids'] as num?)?.toInt(),
       lastSalaryDate: (map['lastSalaryDate'] as Timestamp?)?.toDate(),
       scheduleTime: map['scheduleTime'] as String?,
       numberOfTrips: (map['numberOfTrips'] as num?)?.toInt() ?? 1,
       tripSchedules: (map['tripSchedules'] as List?)?.cast<String>() ?? [],
       chauffeurSalaryType: map['chauffeurSalaryType'] as String? ?? 'monthly',
       receveurSalaryType: map['receveurSalaryType'] as String? ?? 'monthly',
+      currentTripIndex: (map['currentTripIndex'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -143,6 +152,7 @@ class Bus {
       'createdAt': Timestamp.fromDate(createdAt),
       'ownerId': ownerId,
       'driverId': driverId,
+      'salary': salary,
       'recipient': recipientSalary,
       'driverStatus': driverStatus,
       'departureLat': departureLat,
@@ -161,12 +171,14 @@ class Bus {
       'lastVidangeDate': lastVidangeDate != null ? Timestamp.fromDate(lastVidangeDate!) : null,
       'lastVidangeKm': lastVidangeKm,
       'currentKm': currentKm,
+      'poids': weightKg,
       'lastSalaryDate': lastSalaryDate != null ? Timestamp.fromDate(lastSalaryDate!) : null,
       'scheduleTime': scheduleTime,
       'numberOfTrips': numberOfTrips,
       'tripSchedules': tripSchedules,
       'chauffeurSalaryType': chauffeurSalaryType,
       'receveurSalaryType': receveurSalaryType,
+      'currentTripIndex': currentTripIndex,
     };
   }
 
@@ -191,4 +203,13 @@ class Bus {
   bool get isPending => validationStatus == 'pending';
   bool get isApproved => validationStatus == 'approved';
   bool get isRejected => validationStatus == 'rejected';
+
+  bool get isReversed => currentTripIndex % 2 != 0;
+
+  String get displayLineName {
+    if (isReversed && lineName.contains('-')) {
+      return lineName.split('-').reversed.map((e) => e.trim()).join(' - ');
+    }
+    return lineName;
+  }
 }

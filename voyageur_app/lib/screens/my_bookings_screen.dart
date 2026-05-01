@@ -5,6 +5,7 @@ import '../models/booking_model.dart';
 import '../services/booking_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/bus_loading_indicator.dart';
+import '../widgets/ticket_card_shape.dart';
 
 class MyBookingsScreen extends StatelessWidget {
   const MyBookingsScreen({super.key});
@@ -58,10 +59,9 @@ class MyBookingsScreen extends StatelessWidget {
                 ));
               }
 
-return ListView.separated(
-                padding: const EdgeInsets.all(16),
+return ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                 itemCount: bookings.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (context, index) {
                   final b = bookings[index];
                   final statusColor = b.isConfirmed
@@ -71,27 +71,24 @@ return ListView.separated(
                           : context.appSub;
                   final date = DateFormat('dd/MM/yyyy HH:mm').format(b.createdAt);
 
-                  return Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: context.appCardBg,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: b.isCancelled ? context.appBorder : statusColor.withValues(alpha: 0.3),
-                      ),
-                    ),
+                  return TicketCardShape(
+                    dividerFraction: 0.28,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // ── Header zone (above the dashed divider) ──
                         Row(children: [
                           Container(
                             width: 40, height: 40,
                             decoration: BoxDecoration(
-                              color: b.isCancelled ? context.appCardBg2 : statusColor.withValues(alpha: 0.1),
+                              color: b.isCancelled
+                                  ? context.appCardBg2
+                                  : statusColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Icon(Icons.directions_bus_rounded,
-                                color: b.isCancelled ? context.appSub : statusColor, size: 20),
+                                color: b.isCancelled ? context.appSub : statusColor,
+                                size: 20),
                           ),
                           const SizedBox(width: 12),
                           Expanded(child: Column(
@@ -100,41 +97,57 @@ return ListView.separated(
                               Text(b.lineName, style: TextStyle(
                                 fontSize: 14, fontWeight: FontWeight.w600,
                                 color: b.isCancelled ? context.appSub : context.appText,
-                                decoration: b.isCancelled ? TextDecoration.lineThrough : null,
+                                decoration: b.isCancelled
+                                    ? TextDecoration.lineThrough
+                                    : null,
                                 decorationColor: context.appSub,
                               )),
-                              Text(b.busName.isNotEmpty ? b.busName : 'Bus',
-                                  style: TextStyle(fontSize: 11, color: context.appSub)),
+                              Text(
+                                b.busName.isNotEmpty ? b.busName : 'Bus',
+                                style: TextStyle(fontSize: 11, color: context.appSub),
+                              ),
                             ],
                           )),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
                             decoration: BoxDecoration(
                               color: statusColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(b.statusText, style: TextStyle(
-                              fontSize: 10, fontWeight: FontWeight.w600, color: statusColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: statusColor,
                             )),
                           ),
                         ]),
-                        const SizedBox(height: 10),
+
+                        // ── Spacer so the dashed line sits between header & body ──
+                        const SizedBox(height: 16),
+
+                        // ── Body zone (below the dashed divider) ──
                         Row(children: [
                           Icon(Icons.access_time, size: 12, color: context.appSub),
                           const SizedBox(width: 4),
-                          Text(date, style: TextStyle(fontSize: 11, color: context.appSub)),
+                          Text(date,
+                              style: TextStyle(fontSize: 11, color: context.appSub)),
                           const Spacer(),
                           if (!b.isCancelled)
                             GestureDetector(
-                              onTap: () => _confirmCancel(context, bookingService, b),
+                              onTap: () =>
+                                  _confirmCancel(context, bookingService, b),
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 5),
                                 decoration: BoxDecoration(
                                   color: context.appRed.withValues(alpha: 0.08),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text('Annuler', style: TextStyle(
-                                  fontSize: 11, fontWeight: FontWeight.w600, color: context.appRed,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: context.appRed,
                                 )),
                               ),
                             ),

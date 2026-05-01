@@ -6,7 +6,12 @@ import '../services/auth_service.dart';
 import '../models/subscription_plan.dart';
 import '../services/alert_notification_service.dart';
 import '../theme_notifier.dart';
+import '../locale_notifier.dart';
+import '../l10n/app_localizations.dart';
+import '../app_settings_notifier.dart';
 import '../widgets/bus_loading_indicator.dart';
+import './subscription_history_screen.dart';
+import './change_plan_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -37,16 +42,18 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   void _confirmLogout(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Déconnexion',
-            style: TextStyle(fontWeight: FontWeight.w600)),
-        content: Text('Voulez-vous vraiment vous déconnecter ?'),
+        title: Text(l10n.logoutTitle,
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        content: Text(l10n.logoutConfirm),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx), child: Text('Annuler')),
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(l10n.cancel)),
           FilledButton(
             onPressed: () async {
               Navigator.pop(ctx);
@@ -57,7 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
             ),
-            child: Text('Déconnecter'),
+            child: Text(l10n.logoutAction),
           ),
         ],
       ),
@@ -65,12 +72,14 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   void _editField({
+    required BuildContext context,
     required String title,
     required String currentValue,
     required String fieldKey,
     TextInputType keyboardType = TextInputType.text,
     int maxLength = 100,
   }) {
+    final l10n = AppLocalizations.of(context);
     final controller = TextEditingController(text: currentValue);
     showModalBottomSheet(
       context: context,
@@ -81,8 +90,8 @@ class _ProfileScreenState extends State<ProfileScreen>
           padding:
               EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
           child: Container(
-            margin: EdgeInsets.all(16),
-            padding: EdgeInsets.all(24),
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: context.appCardBg,
               borderRadius: BorderRadius.circular(24),
@@ -91,7 +100,6 @@ class _ProfileScreenState extends State<ProfileScreen>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Handle
                 Center(
                   child: Container(
                     width: 40,
@@ -102,16 +110,16 @@ class _ProfileScreenState extends State<ProfileScreen>
                     ),
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Text(
-                  'Modifier $title',
+                  l10n.editFieldTitle(title),
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: context.appDark,
                   ),
                 ),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 TextField(
                   controller: controller,
                   keyboardType: keyboardType,
@@ -135,7 +143,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     counterStyle: TextStyle(color: context.appSub),
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Row(
                   children: [
                     Expanded(
@@ -145,31 +153,34 @@ class _ProfileScreenState extends State<ProfileScreen>
                           side: BorderSide(color: context.appBorder),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
-                          padding: EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: Text('Annuler',
+                        child: Text(l10n.cancel,
                             style: TextStyle(color: context.appSub)),
                       ),
                     ),
-                    SizedBox(width: 12),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
                         onPressed: () async {
                           final newVal = controller.text.trim();
                           if (newVal.isEmpty) return;
                           Navigator.pop(ctx);
+                          final messenger = ScaffoldMessenger.of(context);
+                          final green = context.appGreen;
+                          final msg = l10n.fieldUpdatedFmt(title);
                           await FirebaseFirestore.instance
                               .collection('users')
                               .doc(_authService.uid)
                               .update({fieldKey: newVal});
                           if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            messenger.showSnackBar(
                               SnackBar(
-                                content: Text('$title mis à jour'),
+                                content: Text(msg),
                                 behavior: SnackBarBehavior.floating,
                                 shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12)),
-                                backgroundColor: context.appGreen,
+                                backgroundColor: green,
                               ),
                             );
                           }
@@ -178,9 +189,219 @@ class _ProfileScreenState extends State<ProfileScreen>
                           backgroundColor: context.appPurple,
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
-                          padding: EdgeInsets.symmetric(vertical: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        child: Text('Enregistrer'),
+                        child: Text(l10n.save),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showLanguagePicker(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          margin: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: context.appCardBg,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: context.appBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                l10n.languageLabel,
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: context.appDark,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _LanguageOption(
+                flag: '🇫🇷',
+                name: l10n.langFrench,
+                code: 'fr',
+                isSelected: localeNotifier.value.languageCode == 'fr',
+              ),
+              _Divider(),
+              _LanguageOption(
+                flag: '🇬🇧',
+                name: l10n.langEnglish,
+                code: 'en',
+                isSelected: localeNotifier.value.languageCode == 'en',
+              ),
+              _Divider(),
+              _LanguageOption(
+                flag: '🇸🇦',
+                name: l10n.langArabic,
+                code: 'ar',
+                isSelected: localeNotifier.value.languageCode == 'ar',
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showSettingEditor({
+    required BuildContext context,
+    required String label,
+    required String currentValue,
+    required bool isInt,
+    required Future<void> Function(String) onSave,
+  }) {
+    final l10n = AppLocalizations.of(context);
+    final controller = TextEditingController(text: currentValue);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: context.appCardBg,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.appBorder,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  '${l10n.editSettingTitle} — $label',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: context.appDark,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  keyboardType: isInt
+                      ? TextInputType.number
+                      : const TextInputType.numberWithOptions(decimal: true),
+                  autofocus: true,
+                  style: TextStyle(color: context.appDark),
+                  decoration: InputDecoration(
+                    labelText: label,
+                    labelStyle: TextStyle(color: context.appSub),
+                    filled: true,
+                    fillColor: context.appCardBg2,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide:
+                          BorderSide(color: context.appPurple, width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: context.appBorder),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(l10n.cancel,
+                            style: TextStyle(color: context.appSub)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () async {
+                          final raw = controller.text.trim();
+                          final valid = isInt
+                              ? (int.tryParse(raw) != null &&
+                                  int.parse(raw) > 0)
+                              : (double.tryParse(raw) != null &&
+                                  double.parse(raw) > 0);
+                          if (!valid) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(l10n.invalidNumber),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                backgroundColor: context.appRed,
+                              ),
+                            );
+                            return;
+                          }
+                          Navigator.pop(ctx);
+                          final messenger = ScaffoldMessenger.of(context);
+                          final green = context.appGreen;
+                          final msg = l10n.settingsSaved;
+                          await onSave(raw);
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(msg),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12)),
+                                backgroundColor: green,
+                              ),
+                            );
+                          }
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: context.appPurple,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(l10n.save),
                       ),
                     ),
                   ],
@@ -195,6 +416,8 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -210,12 +433,12 @@ class _ProfileScreenState extends State<ProfileScreen>
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: BusLoadingIndicator());
+              return const Center(child: BusLoadingIndicator());
             }
 
             final data =
                 snapshot.data?.data() as Map<String, dynamic>? ?? {};
-            final displayName = data['displayName'] ?? 'Propriétaire';
+            final displayName = data['displayName'] ?? l10n.defaultOwnerName;
             final email = data['email'] ?? _authService.currentUser?.email ?? '';
             final phone = data['phone'] ?? '';
             final status = data['subscriptionStatus'] ?? '';
@@ -224,25 +447,26 @@ class _ProfileScreenState extends State<ProfileScreen>
             final subscription = data['subscription'] ?? 'starter';
             final expiresAt = data['subscriptionExpiresAt'] as Timestamp?;
 
-            // Compute subscription details
             final planName = SubscriptionPlan.getById(subscription).name;
             String expirationStr = '—';
             String remainingStr = '—';
+            bool isRemainingExpired = false;
             if (expiresAt != null) {
               final now = DateTime.now();
               final expDate = expiresAt.toDate();
-              expirationStr = _formatDate(expDate);
+              expirationStr = l10n.formatDate(expDate);
               final diff = expDate.difference(now);
               if (diff.isNegative) {
-                remainingStr = 'Expiré';
+                remainingStr = l10n.expiredLabel;
+                isRemainingExpired = true;
               } else if (diff.inDays > 0) {
-                remainingStr = '${diff.inDays} jours';
+                remainingStr = l10n.daysFmt(diff.inDays);
               } else if (diff.inHours > 0) {
-                remainingStr = '${diff.inHours} heures';
+                remainingStr = l10n.hoursFmt(diff.inHours);
               } else if (diff.inMinutes > 0) {
-                remainingStr = '${diff.inMinutes} minutes';
+                remainingStr = l10n.minutesFmt(diff.inMinutes);
               } else {
-                remainingStr = 'Expire bientôt';
+                remainingStr = l10n.expiresSoon;
               }
             }
 
@@ -260,19 +484,19 @@ class _ProfileScreenState extends State<ProfileScreen>
                       child: Row(
                         children: [
                           Text(
-                            'Mon Profil',
+                            l10n.myProfile,
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w700,
                               color: context.appDark,
                             ),
                           ),
-                           const Spacer(),
+                          const Spacer(),
                         ],
                       ),
                     ),
 
-                    SizedBox(height: 28),
+                    const SizedBox(height: 28),
 
                     // ════════════════════════════════════════
                     // AVATAR + NAME
@@ -294,14 +518,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                           BoxShadow(
                             color: context.appPurple.withValues(alpha: 0.3),
                             blurRadius: 20,
-                            offset: Offset(0, 8),
+                            offset: const Offset(0, 8),
                           ),
                         ],
                       ),
                       child: Center(
                         child: Text(
                           _initials(displayName),
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 28,
                             fontWeight: FontWeight.w700,
                             color: Colors.white,
@@ -309,7 +533,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                       ),
                     ),
-                    SizedBox(height: 14),
+                    const SizedBox(height: 14),
                     Text(
                       displayName,
                       style: TextStyle(
@@ -318,7 +542,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         color: context.appDark,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       email,
                       style: TextStyle(
@@ -326,18 +550,18 @@ class _ProfileScreenState extends State<ProfileScreen>
                         color: context.appSub,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     // Status badge
                     Container(
                       padding:
-                          EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                          const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                       decoration: BoxDecoration(
                         color: _statusColor(status, context)
                             .withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        _statusLabel(status),
+                        l10n.statusLabel(status),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -346,13 +570,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                     ),
 
-                    SizedBox(height: 28),
+                    const SizedBox(height: 28),
 
                     // ════════════════════════════════════════
                     // INFO SECTION
                     // ════════════════════════════════════════
                     Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Container(
                         decoration: BoxDecoration(
                           color: context.appCardBg,
@@ -365,9 +589,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                           children: [
                             Padding(
                               padding:
-                                  EdgeInsets.fromLTRB(18, 18, 18, 0),
+                                  const EdgeInsets.fromLTRB(18, 18, 18, 0),
                               child: Text(
-                                'Informations personnelles',
+                                l10n.personalInfo,
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
@@ -375,13 +599,14 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 ),
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             _ProfileTile(
                               icon: Icons.person_outline,
-                              label: 'Nom complet',
+                              label: l10n.fullName,
                               value: displayName,
                               onEdit: () => _editField(
-                                title: 'Nom complet',
+                                context: context,
+                                title: l10n.fullName,
                                 currentValue: displayName,
                                 fieldKey: 'displayName',
                               ),
@@ -389,20 +614,18 @@ class _ProfileScreenState extends State<ProfileScreen>
                             _Divider(),
                             _ProfileTile(
                               icon: Icons.email_outlined,
-                              label: 'Email',
+                              label: l10n.emailLabel,
                               value: email,
-                              // Email is tied to Firebase Auth — not editable here
                               onEdit: null,
                             ),
                             _Divider(),
                             _ProfileTile(
                               icon: Icons.phone_outlined,
-                              label: 'Téléphone',
-                              value: phone.isNotEmpty
-                                  ? phone
-                                  : 'Non renseigné',
+                              label: l10n.phone,
+                              value: phone.isNotEmpty ? phone : l10n.notProvided,
                               onEdit: () => _editField(
-                                title: 'Téléphone',
+                                context: context,
+                                title: l10n.phone,
                                 currentValue: phone,
                                 fieldKey: 'phone',
                                 keyboardType: TextInputType.phone,
@@ -410,62 +633,196 @@ class _ProfileScreenState extends State<ProfileScreen>
                               ),
                             ),
                             _Divider(),
-                             _ProfileTile(
-                               icon: Icons.calendar_today_outlined,
-                               label: 'Membre depuis',
-                               value: createdAt != null
-                                   ? _formatDate(createdAt.toDate())
-                                   : '—',
-                               onEdit: null,
-                             ),
-                             _Divider(),
-                             _ProfileTile(
-                               icon: Icons.workspace_premium_outlined,
-                               label: 'Plan actuel',
-                               value: planName,
-                               onEdit: null,
-                             ),
-                             _Divider(),
-                             _ProfileTile(
-                               icon: Icons.event_outlined,
-                               label: 'Expiration',
-                               value: expirationStr,
-                               onEdit: null,
-                             ),
-                             _Divider(),
-                             _ProfileTile(
-                               icon: Icons.timer_outlined,
-                               label: 'Temps restant',
-                               value: remainingStr,
-                               onEdit: null,
-                               valueColor: remainingStr == 'Expiré' ? context.appRed : null,
-                             ),
-                             if (trialEnd != null &&
-                                 trialEnd
-                                     .toDate()
-                                     .isAfter(DateTime.now())) ...[
-                               _Divider(),
-                               _ProfileTile(
-                                 icon: Icons.timer_outlined,
-                                 label: 'Fin de l\'essai',
-                                 value: _formatDate(trialEnd.toDate()),
-                                 onEdit: null,
-                                 valueColor: context.appOrange,
-                               ),
-                             ],
-                            SizedBox(height: 8),
+                            _ProfileTile(
+                              icon: Icons.calendar_today_outlined,
+                              label: l10n.memberSince,
+                              value: createdAt != null
+                                  ? l10n.formatDate(createdAt.toDate())
+                                  : '—',
+                              onEdit: null,
+                            ),
+                            _Divider(),
+                            _ProfileTile(
+                              icon: Icons.workspace_premium_outlined,
+                              label: l10n.currentPlan,
+                              value: planName,
+                              onEdit: null,
+                            ),
+                            _Divider(),
+                            _ProfileTile(
+                              icon: Icons.event_outlined,
+                              label: l10n.expiration,
+                              value: expirationStr,
+                              onEdit: null,
+                            ),
+                            _Divider(),
+                            _ProfileTile(
+                              icon: Icons.timer_outlined,
+                              label: l10n.timeRemaining,
+                              value: remainingStr,
+                              onEdit: null,
+                              valueColor: isRemainingExpired ? context.appRed : null,
+                            ),
+                            if (trialEnd != null &&
+                                trialEnd.toDate().isAfter(DateTime.now())) ...[
+                              _Divider(),
+                              _ProfileTile(
+                                icon: Icons.timer_outlined,
+                                label: l10n.trialEndLabel,
+                                value: l10n.formatDate(trialEnd.toDate()),
+                                onEdit: null,
+                                valueColor: context.appOrange,
+                              ),
+                            ],
+                            const SizedBox(height: 8),
                           ],
                         ),
                       ),
                     ),
 
-                    SizedBox(height: 20),
+                    const SizedBox(height: 20),
+
+                    // ════════════════════════════════════════
+                    // SETTINGS SECTION (Language)
+                    // ════════════════════════════════════════
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: context.appCardBg,
+                          borderRadius: BorderRadius.circular(20),
+                          border:
+                              Border.all(color: context.appBorder, width: 1),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                              child: Text(
+                                l10n.settingsSection,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: context.appDark,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            ValueListenableBuilder<Locale>(
+                              valueListenable: localeNotifier,
+                              builder: (context, locale, _) {
+                                return _ActionTile(
+                                  icon: Icons.language_outlined,
+                                  label:
+                                      '${l10n.languageLabel}: ${l10n.currentLanguageName(locale.languageCode)}',
+                                  iconColor: context.appPrimary,
+                                  onTap: () => _showLanguagePicker(context),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // ════════════════════════════════════════
+                    // APP SETTINGS SECTION (Fleet Economics)
+                    // ════════════════════════════════════════
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: context.appCardBg,
+                          borderRadius: BorderRadius.circular(20),
+                          border:
+                              Border.all(color: context.appBorder, width: 1),
+                        ),
+                        child: ValueListenableBuilder<AppSettings>(
+                          valueListenable: appSettingsNotifier,
+                          builder: (context, settings, _) {
+                            final l10n = AppLocalizations.of(context);
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(18, 18, 18, 0),
+                                  child: Text(
+                                    l10n.appSettingsTitle,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: context.appDark,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                _ProfileTile(
+                                  icon: Icons.local_gas_station_outlined,
+                                  label: l10n.fuelPriceLabel,
+                                  value:
+                                      '${settings.fuelPricePerLiter.toStringAsFixed(0)} DA/L',
+                                  onEdit: () => _showSettingEditor(
+                                    context: context,
+                                    label: l10n.fuelPriceLabel,
+                                    currentValue: settings.fuelPricePerLiter
+                                        .toStringAsFixed(0),
+                                    isInt: false,
+                                    onSave: (v) => appSettingsNotifier
+                                        .setFuelPrice(double.parse(v)),
+                                  ),
+                                ),
+                                _Divider(),
+                                _ProfileTile(
+                                  icon: Icons.oil_barrel_outlined,
+                                  label: l10n.vidangeIntervalLabel,
+                                  value: '${settings.vidangeIntervalKm} km',
+                                  onEdit: () => _showSettingEditor(
+                                    context: context,
+                                    label: l10n.vidangeIntervalLabel,
+                                    currentValue:
+                                        '${settings.vidangeIntervalKm}',
+                                    isInt: true,
+                                    onSave: (v) => appSettingsNotifier
+                                        .setVidangeInterval(int.parse(v)),
+                                  ),
+                                ),
+                                _Divider(),
+                                _ProfileTile(
+                                  icon: Icons.speed_outlined,
+                                  label: l10n.fuelConsumptionLabel,
+                                  value:
+                                      '${settings.fuelConsumptionL100.toStringAsFixed(1)} L/100km',
+                                  onEdit: () => _showSettingEditor(
+                                    context: context,
+                                    label: l10n.fuelConsumptionLabel,
+                                    currentValue: settings.fuelConsumptionL100
+                                        .toStringAsFixed(1),
+                                    isInt: false,
+                                    onSave: (v) => appSettingsNotifier
+                                        .setFuelConsumption(double.parse(v)),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 20),
 
                     // ════════════════════════════════════════
                     // ACTIONS SECTION
                     // ════════════════════════════════════════
                     Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Container(
                         decoration: BoxDecoration(
                           color: context.appCardBg,
@@ -475,27 +832,57 @@ class _ProfileScreenState extends State<ProfileScreen>
                         ),
                         child: Column(
                           children: [
-                            // Change password
                             _ActionTile(
                               icon: Icons.lock_outline,
-                              label: 'Changer le mot de passe',
+                              label: l10n.changePassword,
                               iconColor: context.appPurple,
-                              onTap: () => _resetPassword(email),
+                              onTap: () => _resetPassword(context, email),
                             ),
                             _Divider(),
-                            // Test alerts
+                            _ActionTile(
+                              icon: Icons.history_rounded,
+                              label: l10n.subscriptionHistory,
+                              iconColor: context.appPrimary,
+                              onTap: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          const SubscriptionHistoryScreen()),
+                                );
+                              },
+                            ),
+                            if (status == 'active') ...[
+                              _Divider(),
+                              _ActionTile(
+                                icon: Icons.swap_vert_circle_outlined,
+                                label: l10n.changePlan,
+                                iconColor: context.appGreen,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ChangePlanScreen(
+                                          currentPlanId: subscription),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                            _Divider(),
                             _ActionTile(
                               icon: Icons.notifications_active_outlined,
-                              label: 'Tester les notifications d\'alertes',
+                              label: l10n.testAlertNotifs,
                               iconColor: context.appOrange,
                               onTap: () async {
                                 final messenger = ScaffoldMessenger.of(context);
                                 final orange = context.appOrange;
+                                final sent = l10n.notificationsSent;
                                 await AlertNotificationService.testAll();
                                 if (!mounted) return;
                                 messenger.showSnackBar(
                                   SnackBar(
-                                    content: const Text('Notifications envoyées'),
+                                    content: Text(sent),
                                     behavior: SnackBarBehavior.floating,
                                     shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(12)),
@@ -505,10 +892,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                               },
                             ),
                             _Divider(),
-                            // Logout
                             _ActionTile(
                               icon: Icons.logout_rounded,
-                              label: 'Se déconnecter',
+                              label: l10n.signOut,
                               iconColor: context.appRed,
                               labelColor: context.appRed,
                               onTap: () => _confirmLogout(context),
@@ -518,7 +904,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       ),
                     ),
 
-                    SizedBox(height: 40),
+                    const SizedBox(height: 40),
                   ],
                 ),
               ),
@@ -529,30 +915,35 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  void _resetPassword(String email) async {
+  void _resetPassword(BuildContext context, String email) async {
+    final l10n = AppLocalizations.of(context);
     if (email.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final green = context.appGreen;
+    final red = context.appRed;
+    final successMsg = l10n.passwordResetSentFmt(email);
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('Email de réinitialisation envoyé à $email'),
+            content: Text(successMsg),
             behavior: SnackBarBehavior.floating,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            backgroundColor: context.appGreen,
+            backgroundColor: green,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
+            content: Text(l10n.errorFmt(e.toString())),
             behavior: SnackBarBehavior.floating,
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            backgroundColor: context.appRed,
+            backgroundColor: red,
           ),
         );
       }
@@ -565,14 +956,6 @@ class _ProfileScreenState extends State<ProfileScreen>
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     }
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
-  }
-
-  String _formatDate(DateTime dt) {
-    const months = [
-      '', 'Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin',
-      'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc',
-    ];
-    return '${dt.day} ${months[dt.month]} ${dt.year}';
   }
 
   Color _statusColor(String status, BuildContext context) {
@@ -588,20 +971,54 @@ class _ProfileScreenState extends State<ProfileScreen>
         return context.appSub;
     }
   }
+}
 
-  String _statusLabel(String status) {
-    switch (status) {
-      case 'active':
-        return 'Abonnement actif';
-      case 'pending':
-        return 'En attente';
-      case 'inactive':
-        return 'Inactif';
-      case 'expired':
-        return 'Expiré';
-      default:
-        return 'Essai gratuit';
-    }
+// ════════════════════════════════════════
+// LANGUAGE OPTION TILE (inside picker sheet)
+// ════════════════════════════════════════
+class _LanguageOption extends StatelessWidget {
+  final String flag;
+  final String name;
+  final String code;
+  final bool isSelected;
+
+  const _LanguageOption({
+    required this.flag,
+    required this.name,
+    required this.code,
+    required this.isSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () {
+        localeNotifier.setLocale(Locale(code));
+        Navigator.pop(context);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+        child: Row(
+          children: [
+            Text(flag, style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                name,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? context.appPrimary : context.appDark,
+                ),
+              ),
+            ),
+            if (isSelected)
+              Icon(Icons.check_circle, color: context.appPrimary, size: 20),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -629,7 +1046,7 @@ class _ProfileTile extends StatelessWidget {
       onTap: onEdit,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         child: Row(
           children: [
             Container(
@@ -641,7 +1058,7 @@ class _ProfileTile extends StatelessWidget {
               ),
               child: Icon(icon, color: context.appPurple, size: 18),
             ),
-            SizedBox(width: 14),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,7 +1071,7 @@ class _ProfileTile extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
                     value,
                     style: TextStyle(
@@ -700,7 +1117,7 @@ class _ActionTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         child: Row(
           children: [
             Container(
@@ -712,7 +1129,7 @@ class _ActionTile extends StatelessWidget {
               ),
               child: Icon(icon, color: iconColor, size: 18),
             ),
-            SizedBox(width: 14),
+            const SizedBox(width: 14),
             Expanded(
               child: Text(
                 label,
@@ -739,7 +1156,7 @@ class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 18),
       child: Divider(height: 1, color: context.appBorder.withValues(alpha: 0.5)),
     );
   }

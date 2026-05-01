@@ -22,9 +22,7 @@ import '../services/notify_service.dart';
 import '../theme_notifier.dart';
 import 'profile_page.dart';
 
-const _tiles = 'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}@2x?access_token=${config.mapboxToken}';
-
-// Kept as const for async/non-widget use (snackbar callbacks in async methods)
+// Map tile URL logic is moved to app_config.dart
 const _green  = Color(0xFF2E7D32);
 const _red    = Color(0xFFD32F2F);
 const _orange = Color(0xFFF57C00);
@@ -60,11 +58,14 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
 
   // Route
   List<LatLng> _fullRoute = [], _doneRoute = [], _leftRoute = [], _preRoute = [];
-  bool   _preRouteLoaded = false;
+  bool _preRouteLoaded = false;
+  bool _isRerouting = false;
   double? _depLat, _depLng, _arrLat, _arrLng;
 
   // ETA
   double? _etaMin, _distKm;
+  double _accumulatedDistKm = 0.0;
+  LatLng? _lastDistPos;
   String  _arrTime = '--:--';
   LatLng? _lastEtaPos;
 
@@ -74,6 +75,11 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
 
   StreamSubscription<Bus?>? _busSub;
   bool _busLoaded = false;
+
+  String get _mapTileUrl {
+    if (!config.useMapbox) return config.mapTileUrl;
+    return 'https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}@2x?access_token=${config.mapboxToken}';
+  }
 
   @override
   void initState() {
@@ -137,6 +143,8 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
       setState(() { _tripActive = true; _processing = false; });
       _tripStartTime  = DateTime.now();
       _initialDistKm  = null;
+      _accumulatedDistKm = 0.0;
+      _lastDistPos = null;
       _persistTripStart(_tripStartTime!);
 
       _startGPS(bus.busId);
@@ -168,21 +176,44 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
       final duration    = _tripStartTime != null ? DateTime.now().difference(_tripStartTime!) : Duration.zero;
-      final traveledKm  = (_initialDistKm != null && _distKm != null)
-          ? (_initialDistKm! - _distKm!).clamp(0.0, double.infinity) : 0.0;
+      final traveledKm  = _accumulatedDistKm;
       final durationHours = duration.inSeconds > 0 ? duration.inSeconds / 3600.0 : 0.0;
       final avgSpeed    = (traveledKm > 0 && durationHours > 0) ? traveledKm / durationHours : 0.0;
+
+      double fuelCostDA = 0.0;
+      double fuelLiters = 0.0;
+      if (traveledKm > 0) {
+        final speedFactor = avgSpeed < 30  ? 1.30
+            : avgSpeed < 50  ? 1.10
+            : avgSpeed < 80  ? 1.00
+            : avgSpeed < 100 ? 1.05
+            :                  1.20;
+        const baseL100   = 35.0;
+        const refMass    = 12000.0;
+        final poidsKg    = bus.weightKg?.toDouble() ?? 12000.0;
+        final massFactor = (poidsKg / refMass).clamp(0.6, 2.5);
+        fuelCostDA = traveledKm * baseL100 * massFactor * speedFactor / 100.0 * 36.0;
+        fuelLiters = fuelCostDA / 36.0;
+      }
 
       try {
         await FirebaseFirestore.instance.collection('trips').add({
           'busId':        bus.busId,
           'busName':      bus.busName,
           'lineName':     bus.lineName,
+          'departure':    bus.isReversed && bus.lineName.contains('-')
+              ? bus.lineName.split('-').last.trim()
+              : bus.lineName.split('-').first.trim(),
+          'arrival':      bus.isReversed && bus.lineName.contains('-')
+              ? bus.lineName.split('-').first.trim()
+              : bus.lineName.split('-').last.trim(),
           'driverId':     bus.driverId,
           'ownerId':      bus.ownerId,
           'durationHours': durationHours,
           'distanceKm':   traveledKm,
           'recette':      recette,
+          'fuelCostDA':   fuelCostDA,
+          'fuelLiters':   fuelLiters,
           'timestamp':    FieldValue.serverTimestamp(),
         });
       } catch (e) { debugPrint('Erreur lors de la sauvegarde du trajet: $e'); }
@@ -199,10 +230,20 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
         arrivalLng:   _depLng ?? bus.arrivalLng,
       );
 
-      // One merged write: status + trip index + coordinate swap.
+      try {
+        await _busSvc.endTrip(bus.busId);
+        // Apply the next-trip state locally after status update succeeds.
+        _bus = nextBus;
+        _tripsCompleted++;
+        setState(() {
+          _tripActive    = false; _processing = false;
+          _fullRoute     = []; _doneRoute = []; _leftRoute = []; _preRoute = [];
+          _preRouteLoaded = false; _tripStartTime = null; _initialDistKm = null;
+        });
+      } catch (e) { debugPrint('Erreur mise à jour status: $e'); }
+
       try {
         final update = <String, dynamic>{
-          'driverStatus':     'online',
           'currentTripIndex': nextIndex,
         };
         if (_depLat != null && _depLng != null && _arrLat != null && _arrLng != null) {
@@ -213,16 +254,6 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
         }
         await FirebaseFirestore.instance.collection('buses').doc(bus.busId).update(update);
       } catch (e) { debugPrint('Erreur mise à jour bus: $e'); }
-
-      // Always apply the next-trip state locally — even if the write failed above.
-      _bus = nextBus;
-      _tripsCompleted++;
-
-      setState(() {
-        _tripActive    = false; _processing = false;
-        _fullRoute     = []; _doneRoute = []; _leftRoute = []; _preRoute = [];
-        _preRouteLoaded = false; _tripStartTime = null; _initialDistKm = null;
-      });
 
       try {
         NotifyService.notifyOwnerTripEnded(
@@ -242,8 +273,8 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
     final h            = duration.inHours;
     final m            = duration.inMinutes.remainder(60);
     final durationText = h > 0 ? '${h}h ${m}min' : '$m min';
-    final distText     = distKm > 0 ? '${distKm.toStringAsFixed(1)} km' : '—';
-    final speedText    = avgSpeedKmh > 0 ? '${avgSpeedKmh.toStringAsFixed(0)} km/h' : '—';
+    final distText     = '${distKm.toStringAsFixed(1)} km';
+    final speedText    = '${avgSpeedKmh.toStringAsFixed(0)} km/h';
 
     showModalBottomSheet(
       context: context, isDismissible: true, enableDrag: true,
@@ -430,6 +461,16 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
       });
       _markerAnim!.forward();
 
+      if (_lastDistPos != null) {
+        final d = const Distance().as(LengthUnit.Meter, _lastDistPos!, newPos) / 1000.0;
+        if (d > 0.01) { // 10 meters min distance to accumulate
+          _accumulatedDistKm += d;
+          _lastDistPos = newPos;
+        }
+      } else {
+        _lastDistPos = newPos;
+      }
+
       _splitRoute();
       if (_shouldRefreshEta()) _fetchETA();
       if (_follow) _map.moveAndRotate(_adjustedCenter(_pos), _map.camera.zoom, -_heading);
@@ -439,11 +480,13 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
   // ══════════════════════════════════════
   // ROUTE
   // ══════════════════════════════════════
-  Future<void> _loadRoute() async {
-    if (_depLat == null || _arrLat == null) return;
+  Future<void> _loadRoute({LatLng? from}) async {
+    if ((_depLat == null || _depLng == null) && from == null) return;
+    if (_arrLat == null || _arrLng == null) return;
+    final startLat = from?.latitude ?? _depLat!;
+    final startLng = from?.longitude ?? _depLng!;
     try {
-      final url = Uri.parse(
-          'https://api.mapbox.com/directions/v5/mapbox/driving/$_depLng,$_depLat;$_arrLng,$_arrLat?overview=full&geometries=geojson&access_token=${config.mapboxToken}');
+      final url = Uri.parse(config.getDirectionsUrl(startLng, startLat, _arrLng!, _arrLat!));
       final res = await http.get(url);
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
@@ -455,14 +498,15 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
       }
     } catch (_) {
       if (mounted) _showSnack('Itinéraire indisponible. Vérifiez votre connexion.', _orange);
+    } finally {
+      if (from != null) _isRerouting = false;
     }
   }
 
   Future<void> _fetchETA() async {
     if (!_tripActive || _arrLat == null) return;
     try {
-      final url = Uri.parse(
-          'https://api.mapbox.com/directions/v5/mapbox/driving/${_pos.longitude},${_pos.latitude};$_arrLng,$_arrLat?access_token=${config.mapboxToken}');
+      final url = Uri.parse(config.getDirectionsUrl(_pos.longitude, _pos.latitude, _arrLng!, _arrLat!));
       final res = await http.get(url);
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
@@ -491,9 +535,11 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
       final v = d.as(LengthUnit.Meter, _pos, _fullRoute[i]);
       if (v < min) { min = v; idx = i; }
     }
-    if (idx == 0 && min > 100) {
-      _doneRoute = []; _leftRoute = List.from(_fullRoute);
-      if (!_preRouteLoaded) _fetchPreRoute();
+    if (min > 100) {
+      if (!_isRerouting) {
+        _isRerouting = true;
+        _loadRoute(from: _pos);
+      }
     } else {
       if (_preRoute.isNotEmpty) { _preRoute = []; _preRouteLoaded = false; }
       _doneRoute = [..._fullRoute.sublist(0, idx + 1), _pos];
@@ -505,8 +551,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
     if (_depLat == null || _depLng == null) return;
     _preRouteLoaded = true;
     try {
-      final url = Uri.parse(
-          'https://api.mapbox.com/directions/v5/mapbox/driving/${_pos.longitude},${_pos.latitude};$_depLng,$_depLat?overview=full&geometries=geojson&access_token=${config.mapboxToken}');
+      final url = Uri.parse(config.getDirectionsUrl(_pos.longitude, _pos.latitude, _depLng!, _depLat!));
       final res = await http.get(url);
       if (res.statusCode == 200) {
         final body = jsonDecode(res.body);
@@ -694,11 +739,15 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
                 ),
               ),
               const SizedBox(width: 12),
-              // Greeting
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Tariqi - chauffeur app',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: context.appDark)),
-              ])),
+               // Brand logo
+               Expanded(
+                 child: Image.asset(
+                   'assets/images/massar_logo.webp',
+                   height: 44,
+                   fit: BoxFit.contain,
+                   alignment: Alignment.centerLeft,
+                 ),
+               ),
               // Theme toggle
               ValueListenableBuilder<ThemeMode>(
                 valueListenable: themeNotifier,
@@ -754,7 +803,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
                 ),
               ]),
               const SizedBox(height: 12),
-              _InfoRow('Ligne', bus.lineName.isNotEmpty ? bus.lineName : 'En attente d\'approbation'),
+              _InfoRow('Ligne', bus.lineName.isNotEmpty ? bus.displayLineName : 'En attente d\'approbation'),
               const SizedBox(height: 6),
               _InfoRow('Bus', bus.busName.isNotEmpty ? bus.busName : 'N° ${bus.busNumber}'),
             ]),
@@ -964,8 +1013,10 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
   // DRIVING MODE
   // ══════════════════════════════════════════════════════
   Widget _buildDriving(Bus bus) {
-    final eta    = _etaMin != null ? '${_etaMin!.round()} min' : '--';
-    final dist   = _distKm != null ? '${_distKm!.toStringAsFixed(1)} km' : '--';
+    final double distVal = _distKm ?? (_arrLat != null ? (const Distance().as(LengthUnit.Meter, _pos, LatLng(_arrLat!, _arrLng!)) / 1000.0) : 0.0);
+    final double etaVal  = _etaMin ?? (distVal / 30.0 * 60.0);
+    final eta    = '${etaVal.round()} min';
+    final dist   = '${distVal.toStringAsFixed(1)} km';
     final spd    = '${_speed.round()}';
     final top    = MediaQuery.of(context).padding.top;
     final bottom = MediaQuery.of(context).padding.bottom;
@@ -990,9 +1041,9 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
                 ),
                 children: [
                   TileLayer(
-                    urlTemplate: _tiles,
+                    urlTemplate: _mapTileUrl,
                     userAgentPackageName: 'com.example.chauffeur_app',
-                    tileSize: 512, zoomOffset: -1,
+                    tileSize: config.mapTileSize, zoomOffset: config.mapZoomOffset,
                   ),
                   if (_preRoute.length >= 2)
                     PolylineLayer(polylines: [
@@ -1132,7 +1183,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
             decoration: BoxDecoration(
                 color: context.appCardBg, borderRadius: BorderRadius.circular(10),
                 boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8)]),
-            child: Text(bus.lineName,
+            child: Text(bus.displayLineName,
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: context.appDark)),
           )),
 

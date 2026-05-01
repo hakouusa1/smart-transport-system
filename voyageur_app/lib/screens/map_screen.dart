@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../models/bus_model.dart';
 import '../services/bus_service.dart';
 import '../services/location_service.dart';
+import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/booking_button.dart';
@@ -27,7 +28,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final LocationService _locationService = LocationService();
   final BusService _busService = BusService();
   final MapController _mapController = MapController();
-  final DraggableScrollableController _sheetController = DraggableScrollableController();
 
   StreamSubscription<BusLocation?>? _busLocationSub;
   StreamSubscription<Position>? _myPositionSub;
@@ -117,7 +117,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _busToMeEtaTimer?.cancel();
     _moveAnim.dispose();
     _busMotionAnim.dispose();
-    _sheetController.dispose();
     super.dispose();
   }
 
@@ -149,7 +148,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _calcMeToBus() {
     if (_myPosition == null || _busLocation == null) return;
     final m = const Distance().as(LengthUnit.Meter, _myPosition!, _busLocation!.latLng);
-    setState(() => _meToBusText = m < 1000 ? '${m.toStringAsFixed(0)} m' : '${(m / 1000).toStringAsFixed(1)} km');
+    if (mounted) setState(() => _meToBusText = m < 1000 ? '${m.toStringAsFixed(0)} m' : '${(m / 1000).toStringAsFixed(1)} km');
   }
 
   // ── Bus stream ──
@@ -390,10 +389,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Future<void> _fetchTapEta(LatLng pt) async {
     if (_busLocation == null) return;
     final r = await RouteService.getRoute(_busLocation!.latLng, pt);
-    if (mounted && r != null) {
-      setState(() { _tapEta = r.etaText; _tapDist = r.distanceText; _tapLoading = false; });
-    } else {
-      setState(() { _tapEta = '--'; _tapLoading = false; });
+    if (mounted) {
+      if (r != null) {
+        setState(() { _tapEta = r.etaText; _tapDist = r.distanceText; _tapLoading = false; });
+      } else {
+        setState(() { _tapEta = '--'; _tapLoading = false; });
+      }
     }
   }
 
@@ -454,8 +455,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final bus = _currentBus ?? widget.bus;
     final live = _busLocation != null && !_busOffline;
-    final top = MediaQuery.of(context).padding.top;
-
     final primary = context.appPrimary;
     final isDark = context.isDark;
 
@@ -474,162 +473,187 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
       ),
       child: Scaffold(
-        body: Stack(
+        backgroundColor: context.appBg,
+        appBar: AppBar(
+          backgroundColor: context.appCardBg,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, size: 22, color: context.appText),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(bus.lineName,
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: context.appText),
+                  overflow: TextOverflow.ellipsis),
+              if (bus.busName.isNotEmpty)
+                Text(bus.busName,
+                    style: TextStyle(fontSize: 11, color: context.appSub),
+                    overflow: TextOverflow.ellipsis),
+            ],
+          ),
+          actions: [
+            if (live)
+              Container(
+                margin: const EdgeInsets.only(right: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: context.appGreen,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.circle, size: 6, color: Colors.white),
+                  const SizedBox(width: 4),
+                  const Text('LIVE',
+                      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                ]),
+              ),
+          ],
+        ),
+        body: Column(
           children: [
-            // ── MAP ──
-            FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: _myPosition ?? (live ? _busLocation!.latLng : _center),
-                initialZoom: live ? 14 : 12,
-                onTap: (_, ll) {
-                  if (_tapPt != null) {
-                    if (_leftRoute.length >= 2 && _busLocation != null) {
-                      double min = double.infinity; const d = Distance();
-                      for (final p in _leftRoute) { final v = d.as(LengthUnit.Meter, ll, p); if (v < min) min = v; }
-                      if (min < 60) { _onRouteTap(ll); return; }
-                    }
-                    setState(() { _tapPt = null; _tapEta = null; _tapDist = null; });
-                  } else {
-                    _onRouteTap(ll);
-                  }
-                },
-                onPositionChanged: (_, g) { if (g && _followBus) setState(() => _followBus = false); },
-              ),
-              children: [
-                TileLayer(urlTemplate: RouteService.tileUrl, userAgentPackageName: 'com.example.voyageur_app', tileSize: 512, zoomOffset: -1),
+            // ── Map — top 40% ──────────────────────────────────────────────
+            Flexible(
+              flex: 40,
+              child: Stack(
+                children: [
+                  FlutterMap(
+                    mapController: _mapController,
+                    options: MapOptions(
+                      initialCenter: _myPosition ?? (live ? _busLocation!.latLng : _center),
+                      initialZoom: live ? 14 : 12,
+                      onTap: (_, ll) {
+                        if (_tapPt != null) {
+                          if (_leftRoute.length >= 2 && _busLocation != null) {
+                            double min = double.infinity; const d = Distance();
+                            for (final p in _leftRoute) { final v = d.as(LengthUnit.Meter, ll, p); if (v < min) min = v; }
+                            if (min < 60) { _onRouteTap(ll); return; }
+                          }
+                          setState(() { _tapPt = null; _tapEta = null; _tapDist = null; });
+                        } else {
+                          _onRouteTap(ll);
+                        }
+                      },
+                      onPositionChanged: (_, g) { if (g && _followBus) setState(() => _followBus = false); },
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate: RouteService.tileUrl,
+                        userAgentPackageName: 'com.example.voyageur_app',
+                        tileSize: config.mapTileSize,
+                        zoomOffset: config.mapZoomOffset,
+                      ),
 
-                if (_preRoute.length >= 2)
-                  PolylineLayer(polylines: [Polyline(points: _preRoute, color: primary.withValues(alpha: 0.5), strokeWidth: 8)]),
+                      if (_preRoute.length >= 2)
+                        PolylineLayer(polylines: [Polyline(points: _preRoute, color: primary.withValues(alpha: 0.5), strokeWidth: 8)]),
 
-                if (_doneRoute.length >= 2)
-                  PolylineLayer(polylines: [Polyline(points: _doneRoute, color: const Color(0xFFBDC1C6), strokeWidth: 12)]),
+                      if (_doneRoute.length >= 2)
+                        PolylineLayer(polylines: [Polyline(points: _doneRoute, color: const Color(0xFFBDC1C6), strokeWidth: 12)]),
 
-                if (_leftRoute.length >= 2)
-                  PolylineLayer(polylines: [Polyline(points: _leftRoute, color: primary, strokeWidth: 12)]),
+                      if (_leftRoute.length >= 2)
+                        PolylineLayer(polylines: [Polyline(points: _leftRoute, color: primary, strokeWidth: 12)]),
 
-                if (!_routeOk && live && bus.hasArrival)
-                  PolylineLayer(polylines: [Polyline(points: [_busLocation!.latLng, LatLng(bus.arrivalLat!, bus.arrivalLng!)], color: primary.withValues(alpha: 0.5), strokeWidth: 4)]),
+                      if (!_routeOk && live && bus.hasArrival)
+                        PolylineLayer(polylines: [Polyline(points: [_busLocation!.latLng, LatLng(bus.arrivalLat!, bus.arrivalLng!)], color: primary.withValues(alpha: 0.5), strokeWidth: 4)]),
 
-                MarkerLayer(markers: [
-                  if (bus.hasDeparture)
-                    Marker(point: LatLng(bus.departureLat!, bus.departureLng!), width: 18, height: 18,
-                        child: Container(decoration: BoxDecoration(color: context.appGreen, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)))),
+                      MarkerLayer(markers: [
+                        if (bus.hasDeparture)
+                          Marker(point: LatLng(bus.departureLat!, bus.departureLng!), width: 18, height: 18,
+                              child: Container(decoration: BoxDecoration(color: context.appGreen, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)))),
 
-                  if (bus.hasArrival)
-                    Marker(point: LatLng(bus.arrivalLat!, bus.arrivalLng!), width: 36, height: 42,
-                        child: Icon(Icons.location_on, color: context.appRed, size: 42)),
+                        if (bus.hasArrival)
+                          Marker(point: LatLng(bus.arrivalLat!, bus.arrivalLng!), width: 36, height: 42,
+                              child: Icon(Icons.location_on, color: context.appRed, size: 42)),
 
-                  for (int i = 0; i < _routeStops.length; i++)
-                    Marker(
-                      point: _routeStops[i].latLng,
-                      width: 46,
-                      height: 36,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: _routeStops[i].routeIndex > _busRouteIdx
-                                  ? context.appOrange.withValues(alpha: 0.92)
-                                  : const Color(0xFFBDC1C6),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              _routeStops[i].name.split(' ').first,
-                              style: const TextStyle(fontSize: 7, fontWeight: FontWeight.w700, color: Colors.white),
-                              overflow: TextOverflow.ellipsis,
+                        for (int i = 0; i < _routeStops.length; i++)
+                          Marker(
+                            point: _routeStops[i].latLng,
+                            width: 46,
+                            height: 36,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: _routeStops[i].routeIndex > _busRouteIdx
+                                        ? context.appOrange.withValues(alpha: 0.92)
+                                        : const Color(0xFFBDC1C6),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    _routeStops[i].name.split(' ').first,
+                                    style: const TextStyle(fontSize: 7, fontWeight: FontWeight.w700, color: Colors.white),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(height: 1),
+                                Container(
+                                  width: 8, height: 8,
+                                  decoration: BoxDecoration(
+                                    color: _routeStops[i].routeIndex > _busRouteIdx
+                                        ? context.appOrange
+                                        : const Color(0xFFBDC1C6),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 1.5),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 1),
-                          Container(
-                            width: 8, height: 8,
-                            decoration: BoxDecoration(
-                              color: _routeStops[i].routeIndex > _busRouteIdx
-                                  ? context.appOrange
-                                  : const Color(0xFFBDC1C6),
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 1.5),
+
+                        if (_myPosition != null)
+                          Marker(point: _myPosition!, width: 22, height: 22,
+                              child: Container(decoration: BoxDecoration(color: primary, shape: BoxShape.circle,
+                                  border: Border.all(color: Colors.white, width: 2.5),
+                                  boxShadow: [BoxShadow(color: primary.withValues(alpha: 0.3), blurRadius: 8)]))),
+
+                        if (live)
+                          Marker(
+                            point: _smoothBusPos ?? _busLocation!.latLng,
+                            width: 80,
+                            height: 100,
+                            alignment: const Alignment(0, 0.09),
+                            child: _BusMarker(
+                              busName: bus.busName.isNotEmpty ? bus.busName : bus.lineName,
+                              speedText: _busLocation!.speedText,
+                              primaryColor: primary,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
 
-                  if (_myPosition != null)
-                    Marker(point: _myPosition!, width: 22, height: 22,
-                        child: Container(decoration: BoxDecoration(color: primary, shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2.5),
-                            boxShadow: [BoxShadow(color: primary.withValues(alpha: 0.3), blurRadius: 8)]))),
-
-                  if (live)
-                    Marker(
-                      point: _smoothBusPos ?? _busLocation!.latLng,
-                      width: 80,
-                      height: 100,
-                      alignment: const Alignment(0, 0.09),
-                      child: _BusMarker(
-                        busName: bus.busName.isNotEmpty ? bus.busName : bus.lineName,
-                        speedText: _busLocation!.speedText,
-                        primaryColor: primary,
-                      ),
-                    ),
-
-                  if (_tapPt != null)
-                    Marker(point: _tapPt!, width: 130, height: 56, child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(color: context.appCardBg, borderRadius: BorderRadius.circular(20),
-                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 2))]),
-                          child: _tapLoading
-                              ? SizedBox(width: 14, height: 14, child: BusLoadingIndicator(strokeWidth: 2, color: primary))
-                              : Row(mainAxisSize: MainAxisSize.min, children: [
-                            Text(_tapEta ?? '--', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appText)),
-                            if (_tapDist != null) ...[
-                              Text('  ·  ', style: TextStyle(color: context.appSub, fontSize: 10)),
-                              Text(_tapDist!, style: TextStyle(fontSize: 10, color: context.appSub)),
-                            ],
-                          ])),
-                      Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 2),
-                          decoration: BoxDecoration(color: primary, shape: BoxShape.circle)),
-                    ])),
-                ]),
-              ],
-            ),
-
-            // ── TOP BAR ──
-            Positioned(
-              top: 0, left: 0, right: 0,
-              child: Container(
-                padding: EdgeInsets.fromLTRB(8, top + 8, 16, 8),
-                child: Row(children: [
-                  Material(color: context.appCardBg, shape: const CircleBorder(), elevation: 2, shadowColor: Colors.black26,
-                      child: InkWell(customBorder: const CircleBorder(), onTap: () => Navigator.pop(context),
-                          child: Padding(padding: const EdgeInsets.all(10), child: Icon(Icons.arrow_back, size: 22, color: context.appText)))),
-                  const SizedBox(width: 8),
-                  Expanded(
-                      child: Material(color: context.appCardBg, borderRadius: BorderRadius.circular(28), elevation: 2, shadowColor: Colors.black26,
-                          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                              child: Row(children: [
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                                  Text(bus.lineName, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: context.appText), overflow: TextOverflow.ellipsis),
-                                  if (bus.busName.isNotEmpty)
-                                    Text(bus.busName, style: TextStyle(fontSize: 12, color: context.appSub), overflow: TextOverflow.ellipsis),
+                        if (_tapPt != null)
+                          Marker(point: _tapPt!, width: 130, height: 56, child: Column(mainAxisSize: MainAxisSize.min, children: [
+                            Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(color: context.appCardBg, borderRadius: BorderRadius.circular(20),
+                                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 2))]),
+                                child: _tapLoading
+                                    ? SizedBox(width: 14, height: 14, child: BusLoadingIndicator(strokeWidth: 2, color: primary))
+                                    : Row(mainAxisSize: MainAxisSize.min, children: [
+                                  Text(_tapEta ?? '--', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appText)),
+                                  if (_tapDist != null) ...[
+                                    Text('  ·  ', style: TextStyle(color: context.appSub, fontSize: 10)),
+                                    Text(_tapDist!, style: TextStyle(fontSize: 10, color: context.appSub)),
+                                  ],
                                 ])),
-                                if (live)
-                                  Container(width: 8, height: 8, margin: const EdgeInsets.only(left: 8),
-                                      decoration: BoxDecoration(color: context.appGreen, shape: BoxShape.circle)),
-                              ])))),
-                ]),
-              ),
-            ),
+                            Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 2),
+                                decoration: BoxDecoration(color: primary, shape: BoxShape.circle)),
+                          ])),
+                      ]),
+                    ],
+                  ),
 
-            // ── OFFLINE / NOT ON TRIP ──
-            if (_busOffline || (!live && _busLocation == null))
-              Positioned(top: top + 72, left: 16, right: 16,
-                  child: Material(color: context.appCardBg, borderRadius: BorderRadius.circular(8), elevation: 1,
-                      child: Padding(padding: const EdgeInsets.all(12),
+                  // Offline / not on trip banner
+                  if (_busOffline || (!live && _busLocation == null))
+                    Positioned(
+                      top: 0, left: 0, right: 0,
+                      child: Material(
+                        color: context.appCardBg,
+                        elevation: 1,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
                           child: Row(children: [
                             Icon(live ? Icons.gps_off : Icons.directions_bus, color: context.appOrange, size: 18),
                             const SizedBox(width: 10),
@@ -639,259 +663,221 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                   : 'Le chauffeur n\'est pas en trajet actuellement',
                               style: TextStyle(fontSize: 13, color: context.appText),
                             )),
-                          ])))),
+                          ]),
+                        ),
+                      ),
+                    ),
 
-            // ── CONTROLS ──
-            Positioned(
-              bottom: 280,
-              right: 16,
-              child: Column(children: [
-                _Btn(Icons.crop_free, _fitAll),
-                const SizedBox(height: 10),
-                if (live) ...[
-                  _Btn(Icons.directions_bus, () { setState(() => _followBus = true); _animatedMoveTo(_busLocation!.latLng, 16); }, tint: _followBus ? primary : null),
-                  const SizedBox(height: 10),
+                  // Map controls (top-right)
+                  Positioned(
+                    top: 10,
+                    right: 12,
+                    child: Column(children: [
+                      _Btn(Icons.crop_free, _fitAll),
+                      const SizedBox(height: 8),
+                      if (live) ...[
+                        _Btn(Icons.directions_bus, () { setState(() => _followBus = true); _animatedMoveTo(_busLocation!.latLng, 16); }, tint: _followBus ? primary : null),
+                        const SizedBox(height: 8),
+                      ],
+                      if (_myPosition != null)
+                        _Btn(Icons.my_location, () { _followBus = false; _animatedMoveTo(_myPosition!, 16); }, tint: primary),
+                    ]),
+                  ),
                 ],
-                if (_myPosition != null)
-                  _Btn(Icons.my_location, () { _followBus = false; _animatedMoveTo(_myPosition!, 16); }, tint: primary),
-              ]),
+              ),
             ),
 
-            // ── DRAGGABLE BOTTOM SHEET ──
-            DraggableScrollableSheet(
-              controller: _sheetController,
-              initialChildSize: 0.33,
-              minChildSize: 0.20,
-              maxChildSize: 0.85,
-              builder: (context, scrollController) {
-                return Container(
-                  decoration: BoxDecoration(
-                    color: context.appCardBg,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
-                        blurRadius: 20,
-                        offset: const Offset(0, -4),
-                      ),
-                    ],
-                  ),
-                  child: ListView(
-                    controller: scrollController,
-                    padding: EdgeInsets.zero,
+            // ── Scrollable details — bottom 60% ───────────────────────────
+            Flexible(
+              flex: 60,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: context.appCardBg,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, -3),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ─ Drag handle ─
-                      Center(
-                        child: Container(
-                          width: 36,
-                          height: 4,
-                          margin: const EdgeInsets.only(top: 10, bottom: 10),
+                      // ─ Bus header ─
+                      Row(children: [
+                        Container(
+                          width: 44, height: 44,
                           decoration: BoxDecoration(
-                            color: context.appBorder,
-                            borderRadius: BorderRadius.circular(2),
+                            color: primary.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.directions_bus, color: primary, size: 22),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(
+                            bus.busName.isNotEmpty ? bus.busName : bus.lineName,
+                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: context.appText),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            bus.busNumber.isNotEmpty ? 'N° ${bus.busNumber}' : bus.statusText,
+                            style: TextStyle(fontSize: 12, color: context.appSub),
+                          ),
+                        ])),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: bus.isOnTrip ? context.appGreen.withValues(alpha: 0.1) : context.appCardBg2,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Text(
+                            bus.statusText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: bus.isOnTrip ? context.appGreen : context.appSub,
+                            ),
                           ),
                         ),
-                      ),
-
-                      // ─ Bus header ─
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                        child: Row(children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: primary.withValues(alpha: 0.1),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(Icons.directions_bus, color: primary, size: 22),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(
-                              bus.busName.isNotEmpty ? bus.busName : bus.lineName,
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: context.appText),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              bus.busNumber.isNotEmpty ? 'N° ${bus.busNumber}' : bus.statusText,
-                              style: TextStyle(fontSize: 12, color: context.appSub),
-                            ),
-                          ])),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            decoration: BoxDecoration(
-                              color: bus.isOnTrip ? context.appGreen.withValues(alpha: 0.1) : context.appCardBg2,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Text(
-                              bus.statusText,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500,
-                                color: bus.isOnTrip ? context.appGreen : context.appSub,
-                              ),
-                            ),
-                          ),
-                        ]),
-                      ),
+                      ]),
 
                       // ─ Booking button ─
-                      if (live && bus.hasArrival)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                          child: BookingButton(bus: bus, etaMinutes: _etaMinutes),
-                        ),
+                      if (live && bus.hasArrival) ...[
+                        const SizedBox(height: 12),
+                        BookingButton(bus: bus, etaMinutes: _etaMinutes),
+                      ],
 
-                      Divider(height: 1, color: context.appBorder),
+                      Divider(height: 24, color: context.appBorder),
 
                       if (live) ...[
-                        const SizedBox(height: 18),
-
                         // ─ Progress bar ─
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                Text(
-                                  'Progression du trajet',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appSub),
-                                ),
-                                Text(
-                                  '${(_routeProgress * 100).toStringAsFixed(0)}%',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: context.appGreen),
-                                ),
-                              ]),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: LinearProgressIndicator(
-                                  value: _routeProgress,
-                                  minHeight: 7,
-                                  backgroundColor: context.appBorder,
-                                  valueColor: AlwaysStoppedAnimation<Color>(context.appGreen),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                                Row(children: [
-                                  Container(
-                                    width: 8, height: 8,
-                                    decoration: BoxDecoration(color: context.appGreen, borderRadius: BorderRadius.circular(2)),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _distanceDepartToBusText == '--' ? 'Départ' : _distanceDepartToBusText,
-                                    style: TextStyle(fontSize: 10, color: context.appGreen, fontWeight: FontWeight.w600),
-                                  ),
-                                  if (_distanceDepartToBusText != '--')
-                                    Text(' parcourus', style: TextStyle(fontSize: 10, color: context.appSub)),
-                                ]),
-                                Row(children: [
-                                  Text(
-                                    _distText == '--' ? 'Arrivée' : _distText,
-                                    style: TextStyle(fontSize: 10, color: context.appRed, fontWeight: FontWeight.w600),
-                                  ),
-                                  if (_distText != '--')
-                                    Text(' restants', style: TextStyle(fontSize: 10, color: context.appSub)),
-                                  const SizedBox(width: 4),
-                                  Container(
-                                    width: 8, height: 8,
-                                    decoration: BoxDecoration(color: context.appRed, borderRadius: BorderRadius.circular(2)),
-                                  ),
-                                ]),
-                              ]),
-                            ],
+                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                          Text(
+                            'Progression du trajet',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appSub),
+                          ),
+                          Text(
+                            '${(_routeProgress * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: context.appGreen),
+                          ),
+                        ]),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: _routeProgress,
+                            minHeight: 7,
+                            backgroundColor: context.appBorder,
+                            valueColor: AlwaysStoppedAnimation<Color>(context.appGreen),
                           ),
                         ),
+                        const SizedBox(height: 6),
+                        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                          Row(children: [
+                            Container(width: 8, height: 8,
+                                decoration: BoxDecoration(color: context.appGreen, borderRadius: BorderRadius.circular(2))),
+                            const SizedBox(width: 4),
+                            Text(
+                              _distanceDepartToBusText == '--' ? 'Départ' : _distanceDepartToBusText,
+                              style: TextStyle(fontSize: 10, color: context.appGreen, fontWeight: FontWeight.w600),
+                            ),
+                            if (_distanceDepartToBusText != '--')
+                              Text(' parcourus', style: TextStyle(fontSize: 10, color: context.appSub)),
+                          ]),
+                          Row(children: [
+                            Text(
+                              _distText == '--' ? 'Arrivée' : _distText,
+                              style: TextStyle(fontSize: 10, color: context.appRed, fontWeight: FontWeight.w600),
+                            ),
+                            if (_distText != '--')
+                              Text(' restants', style: TextStyle(fontSize: 10, color: context.appSub)),
+                            const SizedBox(width: 4),
+                            Container(width: 8, height: 8,
+                                decoration: BoxDecoration(color: context.appRed, borderRadius: BorderRadius.circular(2))),
+                          ]),
+                        ]),
 
                         const SizedBox(height: 18),
 
                         // ─ ETA card ─
                         if (bus.hasArrival)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: etaColor.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(color: etaColor.withValues(alpha: 0.25)),
-                              ),
-                              child: Row(children: [
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text('Temps estimé', style: TextStyle(fontSize: 11, color: context.appSub)),
-                                  const SizedBox(height: 4),
-                                  Text(_etaText, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: etaColor)),
-                                ])),
-                                Container(width: 1, height: 50, color: context.appBorder),
-                                const SizedBox(width: 16),
-                                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text('Arrivée estimée', style: TextStyle(fontSize: 11, color: context.appSub)),
-                                  const SizedBox(height: 4),
-                                  Row(children: [
-                                    Icon(Icons.schedule, size: 16, color: primary),
-                                    const SizedBox(width: 4),
-                                    Text(_arrText, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.appText)),
-                                  ]),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: etaColor.withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: etaColor.withValues(alpha: 0.25)),
+                            ),
+                            child: Row(children: [
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('Temps estimé', style: TextStyle(fontSize: 11, color: context.appSub)),
+                                const SizedBox(height: 4),
+                                Text(_etaText, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: etaColor)),
+                              ])),
+                              Container(width: 1, height: 50, color: context.appBorder),
+                              const SizedBox(width: 16),
+                              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('Arrivée estimée', style: TextStyle(fontSize: 11, color: context.appSub)),
+                                const SizedBox(height: 4),
+                                Row(children: [
+                                  Icon(Icons.schedule, size: 16, color: primary),
+                                  const SizedBox(width: 4),
+                                  Text(_arrText, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: context.appText)),
                                 ]),
                               ]),
-                            ),
+                            ]),
                           ),
 
                         // ─ Bus → Moi ─
                         if (_myPosition != null) ...[
                           const SizedBox(height: 10),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color: primary.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: primary.withValues(alpha: 0.18)),
-                              ),
-                              child: Row(children: [
-                                Icon(Icons.person_pin_circle, color: primary, size: 20),
-                                const SizedBox(width: 10),
-                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text('Bus → Ma position', style: TextStyle(fontSize: 11, color: context.appSub)),
-                                  const SizedBox(height: 2),
-                                  Text(_busToMeEtaText, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primary)),
-                                ])),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: context.appBorder.withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(_meToBusText, style: TextStyle(fontSize: 11, color: context.appSub, fontWeight: FontWeight.w500)),
-                                ),
-                              ]),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.06),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: primary.withValues(alpha: 0.18)),
                             ),
+                            child: Row(children: [
+                              Icon(Icons.person_pin_circle, color: primary, size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                Text('Bus → Ma position', style: TextStyle(fontSize: 11, color: context.appSub)),
+                                const SizedBox(height: 2),
+                                Text(_busToMeEtaText, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primary)),
+                              ])),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: context.appBorder.withValues(alpha: 0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(_meToBusText, style: TextStyle(fontSize: 11, color: context.appSub, fontWeight: FontWeight.w500)),
+                              ),
+                            ]),
                           ),
                         ],
 
                         const SizedBox(height: 14),
 
                         // ─ Speed + last update ─
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(children: [
-                            _Stat(Icons.speed, _busLocation!.speedText, 'Vitesse'),
-                            Container(width: 1, height: 28, color: context.appBorder),
-                            _Stat(Icons.update, _lastUpdateTime, 'Mise à jour'),
-                          ]),
-                        ),
+                        Row(children: [
+                          _Stat(Icons.speed, _busLocation!.speedText, 'Vitesse'),
+                          Container(width: 1, height: 28, color: context.appBorder),
+                          _Stat(Icons.update, _lastUpdateTime, 'Mise à jour'),
+                        ]),
 
                         // ─ Upcoming stops ─
                         if (_hasUpcomingStops) ...[
                           const SizedBox(height: 14),
-                          Divider(height: 1, color: context.appBorder, indent: 16, endIndent: 16),
+                          Divider(height: 1, color: context.appBorder),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                             child: Row(children: [
                               Icon(Icons.place_outlined, size: 13, color: context.appSub),
                               const SizedBox(width: 5),
@@ -902,7 +888,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           SizedBox(
                             height: 60,
                             child: ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+                              padding: EdgeInsets.zero,
                               scrollDirection: Axis.horizontal,
                               itemCount: _upcomingStopsWithETA.length,
                               separatorBuilder: (_, __) => const SizedBox(width: 8),
@@ -944,44 +930,34 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         const SizedBox(height: 14),
 
                         // ─ Route legend ─
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                        Row(children: [
+                          Expanded(child: _LegendItem(color: const Color(0xFFBDC1C6), label: 'Parcouru')),
+                          const SizedBox(width: 8),
+                          Expanded(child: _LegendItem(color: primary, label: 'Restant')),
+                          const SizedBox(width: 8),
+                          Expanded(child: _LegendItem(color: primary.withValues(alpha: 0.5), label: 'Avant départ')),
+                        ]),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: context.appOrange.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
                           child: Row(children: [
-                            Expanded(child: _LegendItem(color: const Color(0xFFBDC1C6), label: 'Parcouru')),
-                            const SizedBox(width: 8),
-                            Expanded(child: _LegendItem(color: primary, label: 'Restant')),
-                            const SizedBox(width: 8),
-                            Expanded(child: _LegendItem(color: primary.withValues(alpha: 0.5), label: 'Avant départ')),
+                            Icon(Icons.wifi_off, color: context.appOrange, size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(
+                              'Aucune donnée disponible pour ce bus.',
+                              style: TextStyle(color: context.appText, fontSize: 13),
+                            )),
                           ]),
                         ),
-
-                        const SizedBox(height: 28),
-                      ] else ...[
-                        const SizedBox(height: 16),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: context.appOrange.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Row(children: [
-                              Icon(Icons.wifi_off, color: context.appOrange, size: 18),
-                              const SizedBox(width: 10),
-                              Expanded(child: Text(
-                                'Aucune donnée disponible pour ce bus.',
-                                style: TextStyle(color: context.appText, fontSize: 13),
-                              )),
-                            ]),
-                          ),
-                        ),
-                        const SizedBox(height: 28),
                       ],
                     ],
                   ),
-                );
-              },
+                ),
+              ),
             ),
           ],
         ),
@@ -1061,8 +1037,7 @@ class _LegendItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(children: [
       Container(
-        width: 20,
-        height: 4,
+        width: 20, height: 4,
         decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
       ),
       const SizedBox(width: 6),

@@ -3,15 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/bus_model.dart';
+import '../constants.dart';
+import '../app_settings_notifier.dart';
 import 'notification_service.dart';
 
-const _vidangeIntervalKm = 10000;
-
 class AlertNotificationService {
-  static const _assuranceThresholdDays = 15;
-  static const _salaryThresholdDays    = 3;
-  static const _vidangeWarnKm          = 1000;
-  static const _vidangeUrgentKm        = 500;
 
   static Future<void> checkAndNotify({bool forceAll = false}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -35,12 +31,12 @@ class AlertNotificationService {
       // ── Assurance (15 days) ────────────────────────────────────────────────
       if (bus.insuranceEndDate != null) {
         final days = bus.insuranceEndDate!.difference(now).inDays;
-        if (days == _assuranceThresholdDays) {
+        if (days == kAssuranceThresholdDays) {
           final key = 'alert_assurance_${bus.busId}_$todayKey';
           if (forceAll || prefs.getBool(key) != true) {
             await NotificationService.showNotification(
               title: 'Assurance — $name',
-              body: 'L\'assurance expire dans $_assuranceThresholdDays jours.',
+              body: 'L\'assurance expire dans $kAssuranceThresholdDays jours.',
               id: 'assurance_${bus.busId}'.hashCode.abs() % 100000,
             );
             await prefs.setBool(key, true);
@@ -62,13 +58,13 @@ class AlertNotificationService {
           nextSalary = DateTime(now.year, now.month + 2, 1);
         }
         final days = nextSalary.difference(now).inDays;
-        if (days == _salaryThresholdDays) {
+        if (days == kSalaryThresholdDays) {
           final key = 'alert_salary_${bus.busId}_$todayKey';
           if (forceAll || prefs.getBool(key) != true) {
             await NotificationService.showNotification(
               title: 'Salaires — $name',
               body:
-                  'Les salaires (${positions.join(' & ')}) sont dans $_salaryThresholdDays jours.',
+                  'Les salaires (${positions.join(' & ')}) sont dans $kSalaryThresholdDays jours.',
               id: 'salary_${bus.busId}'.hashCode.abs() % 100000,
             );
             await prefs.setBool(key, true);
@@ -90,9 +86,9 @@ class AlertNotificationService {
         traveled = agg.getSum('distanceKm') ?? 0.0;
       } catch (_) {}
 
-      final kmRemaining = (_vidangeIntervalKm - traveled).toInt();
+      final kmRemaining = (appSettingsNotifier.value.vidangeIntervalKm - traveled).toInt();
 
-      if (kmRemaining <= _vidangeUrgentKm && kmRemaining > 0) {
+      if (kmRemaining <= kVidangeUrgentKm && kmRemaining > 0) {
         // 500 km urgent reminder
         final key = 'alert_vidange_urgent_${bus.busId}_$todayKey';
         if (forceAll || prefs.getBool(key) != true) {
@@ -103,7 +99,7 @@ class AlertNotificationService {
           );
           await prefs.setBool(key, true);
         }
-      } else if (kmRemaining <= _vidangeWarnKm) {
+      } else if (kmRemaining <= kVidangeWarnKm) {
         // 1000 km warning
         final key = 'alert_vidange_warn_${bus.busId}_$todayKey';
         if (forceAll || prefs.getBool(key) != true) {
@@ -170,7 +166,7 @@ class AlertNotificationService {
         final agg = await query.aggregate(sum('distanceKm')).get();
         traveled = agg.getSum('distanceKm') ?? 0.0;
       } catch (_) {}
-      final kmRemaining = (_vidangeIntervalKm - traveled).toInt();
+      final kmRemaining = (appSettingsNotifier.value.vidangeIntervalKm - traveled).toInt();
       await NotificationService.showNotification(
         title: 'TEST — Vidange · $name',
         body: 'Il reste $kmRemaining km avant la prochaine vidange.',

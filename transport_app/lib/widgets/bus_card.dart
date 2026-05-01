@@ -1,11 +1,18 @@
+import 'dart:async';
+import 'dart:math' show cos, pi;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:latlong2/latlong.dart';
 import '../models/bus_model.dart';
+import '../app_config.dart' as config;
 import '../screens/bus_tracking_screen.dart';
 import '../services/route_service.dart';
-import '../services/route_service.dart';
+import '../services/location_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 import '../theme_notifier.dart';
 import 'pulsing_dot.dart';
 
@@ -50,13 +57,13 @@ class BusCard extends StatelessWidget {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(bus.lineName.split('-').first.trim(),
+                      child: Text(bus.displayLineName.split('-').first.trim(),
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: context.appDark)),
                     ),
                     Icon(Icons.arrow_forward, size: 14, color: context.appSub),
                     Expanded(
                       child: Text(
-                          bus.lineName.contains('-') ? bus.lineName.split('-').last.trim() : '',
+                          bus.displayLineName.contains('-') ? bus.displayLineName.split('-').last.trim() : '',
                           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: context.appDark),
                           textAlign: TextAlign.end),
                     ),
@@ -64,12 +71,9 @@ class BusCard extends StatelessWidget {
                 ),
                 SizedBox(height: 10),
 
-                // Map thumbnail — only tappable when bus is en trajet
                 RouteThumbnail(
                   bus: bus,
-                  onTap: isTrip
-                      ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => BusTrackingScreen(bus: bus)))
-                      : null,
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BusTrackingScreen(bus: bus))),
                 ),
                 SizedBox(height: 8),
 
@@ -170,147 +174,354 @@ class RouteThumbnail extends StatefulWidget {
   final Bus bus;
   final VoidCallback? onTap;
   final double height;
-  RouteThumbnail({required this.bus, this.onTap, this.height = 130});
+
+  const RouteThumbnail({super.key, required this.bus, this.onTap, this.height = 130});
 
   @override
   State<RouteThumbnail> createState() => _RouteThumbnailState();
 }
 
 class _RouteThumbnailState extends State<RouteThumbnail> {
+  final LocationService _locationService = LocationService();
+  StreamSubscription<BusLocation?>? _busLocationSub;
+
   List<LatLng> _routePoints = [];
+  BusLocation? _busLocation;
   bool _routeLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    _loadRoute();
+    if (widget.bus.driverStatus == 'on_trip') {
+      _loadRoute();
+      _startListeningBusLocation();
+    }
+  }
+
+  @override
+  void didUpdateWidget(RouteThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bus.driverStatus != widget.bus.driverStatus) {
+      if (widget.bus.driverStatus == 'on_trip') {
+        _loadRoute();
+        _startListeningBusLocation();
+      } else {
+        _busLocationSub?.cancel();
+        _busLocationSub = null;
+        if (mounted) {
+          setState(() {
+            _routePoints = [];
+            _busLocation = null;
+            _routeLoaded = false;
+          });
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _busLocationSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadRoute() async {
     if (!widget.bus.hasDeparture || !widget.bus.hasArrival) return;
 
-    try {
-      final from = LatLng(widget.bus.departureLat!, widget.bus.departureLng!);
-      final to = LatLng(widget.bus.arrivalLat!, widget.bus.arrivalLng!);
+    final from = LatLng(widget.bus.departureLat!, widget.bus.departureLng!);
+    final to = LatLng(widget.bus.arrivalLat!, widget.bus.arrivalLng!);
 
-      final result = await RouteService.getRoute(from, to);
-
-      if (mounted && result != null && result.points.isNotEmpty) {
-        setState(() {
-          _routePoints = result.points;
-          _routeLoaded = true;
-        });
-      }
-    } catch (e) {
-      // Ignore errors, keep straight line
+    final result = await RouteService.getRoute(from, to);
+    if (mounted && result != null && result.points.isNotEmpty) {
+      setState(() {
+        _routePoints = result.points;
+        _routeLoaded = true;
+      });
     }
+  }
+
+  void _startListeningBusLocation() {
+    _busLocationSub?.cancel();
+    _busLocationSub = _locationService
+        .getBusLocationStream(widget.bus.busId)
+        .listen((location) {
+          if (mounted) {
+            setState(() => _busLocation = location);
+          }
+        });
   }
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double width = constraints.maxWidth;
+        final double finalWidth = width.isFinite && width > 0 ? width : 300;
+        return _buildContent(context, finalWidth);
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context, double width) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fallbackColor = isDark ? const Color(0xFF1a2535) : const Color(0xFFd8e8f5);
 
     if (!widget.bus.hasDeparture || !widget.bus.hasArrival) {
-      return _fallback(context, isDark);
+      return _fallback(context, fallbackColor);
     }
 
     final dep = LatLng(widget.bus.departureLat!, widget.bus.departureLng!);
     final arr = LatLng(widget.bus.arrivalLat!, widget.bus.arrivalLng!);
 
-    // Center & zoom
-    LatLng center;
-    double zoom;
-    if (_routeLoaded && _routePoints.isNotEmpty) {
-      final bounds = LatLngBounds.fromPoints(_routePoints);
-      center = LatLng((bounds.north + bounds.south) / 2, (bounds.east + bounds.west) / 2);
-      final latDiff = bounds.north - bounds.south;
-      final lngDiff = bounds.east - bounds.west;
-      final maxDiff = latDiff > lngDiff ? latDiff : lngDiff;
-      zoom = (maxDiff < 0.05 ? 13.0
-          : maxDiff < 0.2  ? 11.0
-          : maxDiff < 0.8  ? 9.0
-          : maxDiff < 2.0  ? 8.0
-          : maxDiff < 4.0  ? 7.0
-          : 6.0) - 0.5;
-    } else {
-      final centerLat = (dep.latitude + arr.latitude) / 2;
-      final centerLng = (dep.longitude + arr.longitude) / 2;
-      center = LatLng(centerLat, centerLng);
-
-      final latDiff = (dep.latitude - arr.latitude).abs();
-      final lngDiff = (dep.longitude - arr.longitude).abs();
-      final maxDiff = latDiff > lngDiff ? latDiff : lngDiff;
-      zoom = (maxDiff < 0.05 ? 13.0
-          : maxDiff < 0.2  ? 11.0
-          : maxDiff < 0.8  ? 9.0
-          : maxDiff < 2.0  ? 8.0
-          : maxDiff < 4.0  ? 7.0
-          : 6.0) - 0.5;
+    if (!config.useMapbox) {
+      return _buildOsmThumbnail(context, dep, arr);
     }
 
-    Widget map = ClipRRect(
+    // Calculate center including bus location if available
+    final List<LatLng> pointsForCenter = [dep, arr];
+    if (widget.bus.driverStatus == 'on_trip' && _busLocation != null) {
+      pointsForCenter.add(_busLocation!.latLng);
+    }
+
+    final centerLat = pointsForCenter.map((p) => p.latitude).reduce((a, b) => a + b) / pointsForCenter.length;
+    final centerLng = pointsForCenter.map((p) => p.longitude).reduce((a, b) => a + b) / pointsForCenter.length;
+
+    // Calculate dynamic padding based on route distance
+    // Rough distance calculation using lat/lng differences (approximate km)
+    final latDiff = (dep.latitude - arr.latitude).abs();
+    final lngDiff = (dep.longitude - arr.longitude).abs();
+    final roughDistance = (latDiff * 111 + lngDiff * 111 * cos(dep.latitude * pi / 180)).abs();
+    final dynamicPadding = roughDistance > 500 ? 60.0 : roughDistance > 200 ? 40.0 : roughDistance > 50 ? 25.0 : 15.0;
+
+    // Build Mapbox static URL with bus marker if available
+    String staticUrl;
+    if (widget.bus.driverStatus == 'on_trip' && _busLocation != null) {
+      // Custom URL with bus marker
+      final w = (width * 2).toInt().clamp(1, 1280);
+      final h = (widget.height * 2).toInt().clamp(1, 1280);
+      final style = isDark ? 'dark-v11' : 'streets-v12';
+
+      final depMarker = 'pin-s-a+00D265(${dep.longitude},${dep.latitude})';
+      final arrMarker = 'pin-s-b+F40000(${arr.longitude},${arr.latitude})';
+      final busColor = 'FF8B00'; // Orange color for bus marker
+      final busMarker = 'pin-s-bus+$busColor(${_busLocation!.longitude},${_busLocation!.latitude})';
+
+      staticUrl = 'https://api.mapbox.com/styles/v1/mapbox/$style/static/$depMarker,$arrMarker,$busMarker/auto/${w}x$h?access_token=${config.mapboxToken}&padding=${dynamicPadding.toInt()}';
+    } else {
+      staticUrl = RouteService.getStaticMapUrl(
+        lat: centerLat,
+        lng: centerLng,
+        width: width,
+        height: widget.height,
+        departure: dep,
+        arrival: arr,
+        isDark: isDark,
+        padding: dynamicPadding.toInt(),
+      );
+    }
+    
+    if (widget.bus.driverStatus == 'on_trip' && _busLocation != null) {
+      // Custom URL with bus marker
+      final w = (width * 2).toInt().clamp(1, 1280);
+      final h = (widget.height * 2).toInt().clamp(1, 1280);
+      final style = isDark ? 'dark-v11' : 'streets-v12';
+
+      final depMarker = 'pin-s-a+00D265(${dep.longitude},${dep.latitude})';
+      final arrMarker = 'pin-s-b+F40000(${arr.longitude},${arr.latitude})';
+      final busColor = 'FF8B00'; // Orange color for bus marker
+      final busMarker = 'pin-s-bus+$busColor(${_busLocation!.longitude},${_busLocation!.latitude})';
+
+      staticUrl = 'https://api.mapbox.com/styles/v1/mapbox/$style/static/$depMarker,$arrMarker,$busMarker/auto/${w}x$h?access_token=${config.mapboxToken}&padding=15';
+    } else {
+      staticUrl = RouteService.getStaticMapUrl(
+        lat: centerLat,
+        lng: centerLng,
+        width: width,
+        height: widget.height,
+        departure: dep,
+        arrival: arr,
+        isDark: isDark,
+      );
+    }
+
+    Widget imageMap = ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         height: widget.height,
+        width: width,
         child: Stack(
           children: [
-            // Solid bg so there's never a grey flash
-            Container(color: isDark ? const Color(0xFF1a2535) : const Color(0xFFd8e8f5)),
+            // Base background
+            Container(color: fallbackColor),
 
-            IgnorePointer(
-              child: FlutterMap(
-                options: MapOptions(
-                  initialCenter: center,
-                  initialZoom: zoom,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
+            // Cached static map from Mapbox
+            CachedNetworkImage(
+              imageUrl: staticUrl,
+              width: width,
+        height: widget.height,
+              fit: BoxFit.cover,
+              placeholder: (context, url) => Shimmer.fromColors(
+                baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                highlightColor: isDark ? Colors.grey[700]! : Colors.grey[100]!,
+                child: Container(
+                  width: width,
+        height: widget.height,
+                  color: Colors.white,
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.transport.owner',
-                    tileBuilder: isDark ? _darkTileBuilder : null,
-                  ),
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: _routeLoaded ? _routePoints : [dep, arr],
-                        color: context.appGreen,
-                        strokeWidth: 3.5,
-                      ),
-                    ],
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: dep,
-                        width: 20, height: 20,
-                        child: Icon(Icons.location_on, color: context.appGreen, size: 20),
-                      ),
-                      Marker(
-                        point: arr,
-                        width: 20, height: 20,
-                        child: Icon(Icons.location_on, color: context.appRed, size: 20),
-                      ),
-                      if (widget.bus.driverStatus == 'on_trip')
-                        Marker(
-                          point: dep,
-                          width: 24, height: 24,
-                          child: Icon(Icons.directions_bus, color: context.appPrimary, size: 20),
-                        ),
-                    ],
-                  ),
-                ],
+              ),
+              errorWidget: (context, url, error) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.directions_bus, size: 32, color: context.appSub.withValues(alpha: 0.5)),
+                    const SizedBox(height: 4),
+                    Text('Carte indisponible', style: TextStyle(fontSize: 10, color: context.appSub)),
+                  ],
+                ),
               ),
             ),
 
             if (widget.bus.driverStatus != 'on_trip')
               Positioned.fill(
                 child: Container(
-                  color: Colors.black.withValues(alpha: 0.35),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    return widget.onTap != null ? GestureDetector(behavior: HitTestBehavior.opaque, onTap: () {
+      HapticFeedback.selectionClick();
+      widget.onTap!();
+    }, child: imageMap) : imageMap;
+  }
+
+  Widget _buildOsmThumbnail(BuildContext context, LatLng dep, LatLng arr) {
+    // Calculate map bounds to include route and bus location
+    final List<LatLng> allPoints = [dep, arr];
+    if (_routeLoaded && _routePoints.isNotEmpty) {
+      allPoints.addAll(_routePoints.where((point) =>
+        point != dep && point != arr && (_busLocation == null || point != _busLocation!.latLng)
+      ));
+    }
+    if (_busLocation != null) {
+      allPoints.add(_busLocation!.latLng);
+    }
+
+    // Calculate dynamic padding based on route distance for optimal zoom
+    // Rough distance calculation using lat/lng differences (approximate km)
+    final latDiff = (dep.latitude - arr.latitude).abs();
+    final lngDiff = (dep.longitude - arr.longitude).abs();
+    final roughDistance = (latDiff * 111 + lngDiff * 111 * cos(dep.latitude.abs() * pi / 180)).abs();
+    final dynamicPadding = roughDistance > 500 ? 60.0 : roughDistance > 200 ? 40.0 : roughDistance > 50 ? 25.0 : 15.0;
+
+    Widget mapWidget = ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: widget.height,
+        child: Stack(
+          children: [
+            AbsorbPointer(
+              child: FlutterMap(
+                options: MapOptions(
+                  initialCameraFit: CameraFit.coordinates(
+                    coordinates: allPoints,
+                    padding: EdgeInsets.all(dynamicPadding),
+                  ),
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: RouteService.tileUrl,
+                    userAgentPackageName: 'com.example.transporteur_app',
+                    tileSize: config.mapTileSize,
+                    zoomOffset: config.mapZoomOffset,
+                  ),
+                  // Show actual route if loaded, otherwise straight line
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _routeLoaded && _routePoints.isNotEmpty ? _routePoints : [dep, arr],
+                        color: context.appPrimary,
+                        strokeWidth: 3.0,
+                      ),
+                    ],
+                  ),
+                  MarkerLayer(
+                    markers: [
+                      // Departure marker
+                      Marker(
+                        point: dep,
+                        width: 14,
+                        height: 14,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF00D265),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                      // Arrival marker
+                      Marker(
+                        point: arr,
+                        width: 14,
+                        height: 14,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF40000),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                        ),
+                      ),
+                      // Bus location marker (only for buses on trip)
+                      if (widget.bus.driverStatus == 'on_trip' && _busLocation != null)
+                        Marker(
+                          point: _busLocation!.latLng,
+                          width: 20,
+                          height: 20,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: context.appOrange,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 3),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.3),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.directions_bus,
+                              color: Colors.white,
+                              size: 12,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (widget.bus.driverStatus != 'on_trip')
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: Center(
-                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    child: Row(mainAxisSize: MainAxisSize.min, children: const [
                       Icon(Icons.location_off_outlined, color: Colors.white70, size: 16),
                       SizedBox(width: 6),
                       Text('Pas en trajet', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500)),
@@ -321,17 +532,26 @@ class _RouteThumbnailState extends State<RouteThumbnail> {
           ],
         ),
       ),
-        );
+    );
 
-    return widget.onTap != null ? GestureDetector(onTap: widget.onTap, child: map) : map;
+    return widget.onTap != null
+        ? GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              widget.onTap!();
+            },
+            child: mapWidget,
+          )
+        : mapWidget;
   }
 
-  Widget _fallback(BuildContext context, bool isDark) {
+  Widget _fallback(BuildContext context, Color fallbackColor) {
     Widget map = ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
         height: widget.height,
-        color: isDark ? const Color(0xFF1a2535) : const Color(0xFFd8e8f5),
+        color: fallbackColor,
         child: Center(
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Container(width: 10, height: 10, decoration: BoxDecoration(color: context.appGreen, shape: BoxShape.circle)),
@@ -348,19 +568,10 @@ class _RouteThumbnailState extends State<RouteThumbnail> {
       ),
     );
 
-    return widget.onTap != null ? GestureDetector(onTap: widget.onTap, child: map) : map;
-  }
-
-  Widget _darkTileBuilder(BuildContext context, Widget tile, TileImage tileImage) {
-    return ColorFiltered(
-      colorFilter: const ColorFilter.matrix([
-        -0.8, 0, 0, 0, 255,
-         0, -0.8, 0, 0, 255,
-         0, 0, -0.8, 0, 255,
-         0, 0, 0, 1, 0,
-      ]),
-      child: tile,
-    );
+    return widget.onTap != null ? GestureDetector(behavior: HitTestBehavior.opaque, onTap: () {
+      HapticFeedback.selectionClick();
+      widget.onTap!();
+    }, child: map) : map;
   }
 }
 
@@ -423,7 +634,10 @@ class _ActionBtn extends StatelessWidget {
       color: context.appCardBg,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(20),
         child: Container(
           height: 40,
@@ -448,7 +662,10 @@ class _IconBtn extends StatelessWidget {
       color: color.withValues(alpha: 0.06),
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(20),
         child: Container(
           width: 40, height: 40,

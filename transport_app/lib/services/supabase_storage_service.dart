@@ -19,6 +19,10 @@ class SupabaseStorageService {
     Uint8List bytes,
     String storagePath,
   ) async {
+    if (supabaseUrl.isEmpty || !supabaseUrl.startsWith('http')) {
+      throw 'Supabase is not properly initialized. Please check your SUPABASE_URL in app_config.dart.';
+    }
+
     final storage = Supabase.instance.client.storage;
 
     await storage.from(_bucket).uploadBinary(
@@ -31,5 +35,32 @@ class SupabaseStorageService {
     );
 
     return storage.from(_bucket).getPublicUrl(storagePath);
+  }
+
+  /// Name of the bucket for payment receipts.
+  static const String _receiptBucket = 'payment_receipts';
+
+  /// Uploads a payment receipt image to the [payment_receipts] bucket and
+  /// returns the public URL of the uploaded file.
+  static Future<String> uploadReceipt(
+    Uint8List bytes,
+    String storagePath,
+  ) async {
+    if (supabaseUrl.isEmpty || !supabaseUrl.startsWith('http')) {
+      throw 'Supabase is not properly initialized. Please check your SUPABASE_URL in app_config.dart.';
+    }
+
+    final storage = Supabase.instance.client.storage;
+
+    await storage.from(_receiptBucket).uploadBinary(
+      storagePath,
+      bytes,
+      fileOptions: const FileOptions(
+        contentType: 'image/jpeg',
+        upsert: true,
+      ),
+    );
+
+    return storage.from(_receiptBucket).getPublicUrl(storagePath);
   }
 }

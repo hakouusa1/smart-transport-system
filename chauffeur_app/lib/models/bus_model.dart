@@ -22,6 +22,7 @@ class Bus {
   final DateTime? onlineAt;
   final List<String> tripSchedules;
   final int currentTripIndex;
+  final int? weightKg;
 
   Bus({
     required this.busId,
@@ -40,6 +41,7 @@ class Bus {
     this.onlineAt,
     this.tripSchedules = const [],
     this.currentTripIndex = 0,
+    this.weightKg,
   }) : createdAt = createdAt ?? DateTime.now();
 
   factory Bus.fromMap(Map<String, dynamic> map) {
@@ -60,6 +62,7 @@ class Bus {
       onlineAt: (map['onlineAt'] as Timestamp?)?.toDate(),
       tripSchedules: List<String>.from(map['tripSchedules'] ?? []),
       currentTripIndex: (map['currentTripIndex'] as num?)?.toInt() ?? 0,
+      weightKg: (map['poids'] as num?)?.toInt(),
     );
   }
 
@@ -98,6 +101,15 @@ class Bus {
   bool get isOnline => driverStatus == 'online' || driverStatus == 'on_trip';
   bool get hasDeparture => departureLat != null && departureLng != null;
   bool get hasArrival => arrivalLat != null && arrivalLng != null;
+
+  bool get isReversed => currentTripIndex % 2 != 0;
+
+  String get displayLineName {
+    if (isReversed && lineName.contains('-')) {
+      return lineName.split('-').reversed.map((e) => e.trim()).join(' - ');
+    }
+    return lineName;
+  }
   List<String> get allSchedules => tripSchedules;
 
   String? get nextSchedule {

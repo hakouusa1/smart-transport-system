@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/bus_service.dart';
 import '../models/bus_model.dart';
 import '../theme_notifier.dart';
+import '../locale_notifier.dart';
+import '../l10n/app_localizations.dart';
 import '../widgets/staggered_list_item.dart';
 import '../widgets/bus_loading_indicator.dart';
+import '../utils/profit_calculator.dart';
+import '../app_settings_notifier.dart';
 
 // ─────────────────────────────────────────────
 // DATA CLASS
@@ -67,16 +72,31 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   final AuthService _auth       = AuthService();
   final BusService  _busService = BusService();
 
-  DateTime _startDate    = DateTime.now().subtract(const Duration(days: 2));
-  DateTime _endDate      = DateTime.now();
+  static const int _pageSize = 50;
+
+  /// Compute the default start date: Monday of the current week.
+  /// Edge case: if today IS Monday, use the previous week's Monday
+  /// so the chart shows a full 7-day range instead of a single dot.
+  static DateTime _defaultStartDate() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (now.weekday == DateTime.monday) {
+      return today.subtract(const Duration(days: 7));
+    }
+    return today.subtract(Duration(days: now.weekday - 1));
+  }
+
+  DateTime _startDate     = _defaultStartDate();
+  DateTime _endDate       = DateTime.now();
   String   _selectedBusId = 'all';
 
-  StreamSubscription<QuerySnapshot>? _tripSub;
-  List<Map<String, dynamic>> _allTrips   = [];
-  bool _loadingTrips = true;
-  bool _enriching    = false;
+  List<Map<String, dynamic>> _allTrips    = [];
+  bool _loadingTrips  = true;
+  bool _hasMore       = false;
+  bool _loadingMore   = false;
+  DocumentSnapshot? _lastDoc;
 
-  final Map<String, double>               _chauffeurSalaryCache    = {};
+  final Map<String, double>               _chauffeurSalaryCache     = {};
   final Map<String, String>               _chauffeurSalaryTypeCache = {};
   final Map<String, double>               _receveurSalaryCache      = {};
   final Map<String, String>               _receveurSalaryTypeCache  = {};
@@ -87,61 +107,121 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
     super.initState();
     _entranceCtrl = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 500));
-    _tripSub = FirebaseFirestore.instance
-        .collection('trips')
-        .where('ownerId', isEqualTo: _auth.uid)
-        .snapshots()
-        .listen((snap) {
-      _allTrips = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
-      if (!_enriching) _enrich(_allTrips);
-    }, onError: (_) {
-      if (mounted) setState(() => _loadingTrips = false);
+    _loadPersistedRange();
+  }
+
+  Future<void> _loadPersistedRange() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rangeDays = prefs.getInt('stats_range_days');
+      if (rangeDays != null && rangeDays > 0 && mounted) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        setState(() {
+          _startDate = today.subtract(Duration(days: rangeDays));
+          _endDate   = now;
+        });
+      }
+    } catch (_) {}
+    _loadFirstPage();
+  }
+
+  void _triggerEntrance() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (MediaQuery.of(context).disableAnimations) {
+        _entranceCtrl.value = 1.0;
+      } else {
+        _entranceCtrl.forward(from: 0);
+      }
     });
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (MediaQuery.of(context).disableAnimations) {
-      _entranceCtrl.value = 1.0;
-    } else {
-      _entranceCtrl.forward();
+  }
+
+  Query<Map<String, dynamic>> _baseQuery() {
+    final start = Timestamp.fromDate(DateTime(_startDate.year, _startDate.month, _startDate.day));
+    final end   = Timestamp.fromDate(DateTime(_endDate.year,   _endDate.month,   _endDate.day, 23, 59, 59));
+    return FirebaseFirestore.instance
+        .collection('trips')
+        .where('ownerId', isEqualTo: _auth.uid)
+        .where('timestamp', isGreaterThanOrEqualTo: start)
+        .where('timestamp', isLessThanOrEqualTo: end)
+        .orderBy('timestamp', descending: true)
+        .limit(_pageSize);
+  }
+
+  Future<void> _loadFirstPage() async {
+    if (!mounted) return;
+    setState(() {
+      _loadingTrips = true;
+      _allTrips     = [];
+      _lastDoc      = null;
+      _hasMore      = false;
+    });
+    try {
+      final snap = await _baseQuery().get();
+      final trips = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      _lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
+      _hasMore = snap.docs.length == _pageSize;
+      await _enrichBuses(trips);
+      if (!mounted) return;
+      setState(() {
+        _allTrips     = trips;
+        _loadingTrips = false;
+      });
+      _triggerEntrance();
+    } catch (_) {
+      if (mounted) setState(() => _loadingTrips = false);
     }
   }
 
-  Future<void> _enrich(List<Map<String, dynamic>> trips) async {
-    _enriching = true;
+  Future<void> _loadMorePage() async {
+    if (_loadingMore || !_hasMore || _lastDoc == null) return;
+    setState(() => _loadingMore = true);
     try {
-      final busIds = trips
-          .map((t) => t['busId'] as String? ?? '')
-          .where((id) => id.isNotEmpty && !_busCache.containsKey(id))
-          .toSet();
-
-      await Future.wait([
-        ...busIds.map((id) async {
-          try {
-            final doc = await FirebaseFirestore.instance.collection('buses').doc(id).get();
-            final data = doc.data();
-            if (data != null) {
-              _busCache[id] = data;
-              _chauffeurSalaryCache[id] = (data['salary'] as num?)?.toDouble() ?? 0.0;
-              _chauffeurSalaryTypeCache[id] = data['chauffeurSalaryType'] as String? ?? 'monthly';
-              _receveurSalaryCache[id] = (data['recipient'] as num?)?.toDouble() ?? 0.0;
-              _receveurSalaryTypeCache[id] = data['receveurSalaryType'] as String? ?? 'monthly';
-            }
-          } catch (_) {}
-        }),
-      ]);
-    } finally {
-      _enriching = false;
-      if (mounted) setState(() => _loadingTrips = false);
+      final snap = await _baseQuery().startAfterDocument(_lastDoc!).get();
+      final newTrips = snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+      _lastDoc = snap.docs.isNotEmpty ? snap.docs.last : _lastDoc;
+      _hasMore = snap.docs.length == _pageSize;
+      await _enrichBuses(newTrips);
+      if (!mounted) return;
+      setState(() {
+        _allTrips.addAll(newTrips);
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingMore = false);
     }
+  }
+
+  Future<void> _enrichBuses(List<Map<String, dynamic>> trips) async {
+    final busIds = trips
+        .map((t) => t['busId'] as String? ?? '')
+        .where((id) => id.isNotEmpty && !_busCache.containsKey(id))
+        .toSet();
+
+    await Future.wait(busIds.map((id) async {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('buses').doc(id).get();
+        final data = doc.data();
+        if (data != null) {
+          _busCache[id]                = data;
+          _chauffeurSalaryCache[id]    = (data['salary']            as num?)?.toDouble() ?? 0.0;
+          _chauffeurSalaryTypeCache[id] = data['chauffeurSalaryType'] as String? ?? 'monthly';
+          _receveurSalaryCache[id]     = (data['recipient']          as num?)?.toDouble() ?? 0.0;
+          _receveurSalaryTypeCache[id]  = data['receveurSalaryType']  as String? ?? 'monthly';
+        }
+      } catch (_) {}
+    }));
   }
 
   @override
   void dispose() {
     _entranceCtrl.dispose();
-    _tripSub?.cancel();
     super.dispose();
   }
 
@@ -156,78 +236,70 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
     final driverId  = trip['driverId'] as String? ?? '';
     final busId     = trip['busId']    as String? ?? '';
 
-    final ts = trip['timestamp'] as Timestamp?;
-    final date = ts?.toDate();
+    final ts      = trip['timestamp'] as Timestamp?;
+    final date    = ts?.toDate();
     final dateKey = date != null ? DateFormat('yyyy-MM-dd').format(date) : '';
 
     final chauffeurSalary = _chauffeurSalaryCache[busId] ?? 0.0;
-    final chauffeurType = _chauffeurSalaryTypeCache[busId] ?? 'monthly';
-    int chauffeurTripCount;
-    if (dateKey.isNotEmpty && driverId.isNotEmpty) {
-      chauffeurTripCount = tripsPerDayPerDriver[dateKey]?[driverId] ?? 1;
-    } else {
-      chauffeurTripCount = 1;
-    }
-    final chauffeurCost = chauffeurType == 'monthly'
-        ? (chauffeurSalary / 30.0) / chauffeurTripCount
-        : chauffeurSalary;
+    final chauffeurType   = _chauffeurSalaryTypeCache[busId] ?? 'monthly';
+    final chauffeurTripCount = (dateKey.isNotEmpty && driverId.isNotEmpty)
+        ? (tripsPerDayPerDriver[dateKey]?[driverId] ?? 1)
+        : 1;
 
     final receveurSalary = _receveurSalaryCache[busId] ?? 0.0;
-    final receveurType = _receveurSalaryTypeCache[busId] ?? 'monthly';
-    int receveurTripCount;
-    if (dateKey.isNotEmpty && busId.isNotEmpty) {
-      receveurTripCount = tripsPerDayPerBus[dateKey]?[busId] ?? 1;
-    } else {
-      receveurTripCount = 1;
-    }
-    final receveurCost = receveurType == 'monthly' && receveurSalary > 0
-        ? (receveurSalary / 30.0) / receveurTripCount
-        : receveurSalary;
+    final receveurType   = _receveurSalaryTypeCache[busId] ?? 'monthly';
+    final receveurTripCount = (dateKey.isNotEmpty && busId.isNotEmpty)
+        ? (tripsPerDayPerBus[dateKey]?[busId] ?? 1)
+        : 1;
 
-    final bus            = _busCache[busId] ?? {};
-    final poidsKg  = (bus['poids'] as num?)?.toDouble();
-    final fuelCost = _fuelCostDA(distKm: distKm, durationH: durationH, poidsKg: poidsKg);
-    final fuelL    = distKm > 0 ? fuelCost / 36.0 : 0.0;
-    final avgSpeed = (distKm > 0 && durationH > 0) ? distKm / durationH : 0.0;
+    final poidsKg = (_busCache[busId] ?? {})['poids'] != null
+        ? ((_busCache[busId]!['poids'] as num).toDouble())
+        : null;
+
+    final fuelCostDAOverride = trip['fuelCostDA'] != null
+        ? (trip['fuelCostDA'] as num).toDouble()
+        : null;
+
+    final settings = appSettingsNotifier.value;
+    final result = ProfitCalculator.calcTrip(
+      recette:              recette,
+      distKm:               distKm,
+      durationH:            durationH,
+      chauffeurSalary:      chauffeurSalary,
+      chauffeurSalaryType:  chauffeurType,
+      chauffeurTripCount:   chauffeurTripCount,
+      receveurSalary:       receveurSalary,
+      receveurSalaryType:   receveurType,
+      receveurTripCount:    receveurTripCount,
+      fuelCostDAOverride:   fuelCostDAOverride,
+      poidsKg:              poidsKg,
+      fuelPriceDA:          settings.fuelPricePerLiter,
+      baseConsumptionL100:  settings.fuelConsumptionL100,
+    );
 
     return _TripProfit(
-      recette:         recette,
-      chauffeurSalary: chauffeurSalary,
-      chauffeurDay:    chauffeurCost,
-      receveurSalary:  receveurSalary,
-      receveurDay:     receveurCost,
-      hasReceveur:     receveurSalary > 0,
-      fuelCostDA:      fuelCost,
-      fuelLiters:      fuelL,
-      avgSpeedKmh:     avgSpeed,
-      distKm:          distKm,
-      durationH:       durationH,
-      profit:          recette - chauffeurCost - receveurCost - fuelCost,
-      chauffeurType:   chauffeurType,
-      receveurType:    receveurType,
+      recette:            recette,
+      chauffeurSalary:    chauffeurSalary,
+      chauffeurDay:       result.chauffeurDay,
+      receveurSalary:     receveurSalary,
+      receveurDay:        result.receveurDay,
+      hasReceveur:        result.hasReceveur,
+      fuelCostDA:         result.fuelCostDA,
+      fuelLiters:         result.fuelLiters,
+      avgSpeedKmh:        result.avgSpeedKmh,
+      distKm:             distKm,
+      durationH:          durationH,
+      profit:             result.profit,
+      chauffeurType:      chauffeurType,
+      receveurType:       receveurType,
       chauffeurTripCount: chauffeurTripCount,
-      receveurTripCount: receveurTripCount,
+      receveurTripCount:  receveurTripCount,
     );
-  }
-
-  double _fuelCostDA({required double distKm, required double durationH, double? poidsKg}) {
-    if (distKm <= 0) return 0;
-    final avgSpeed    = durationH > 0 ? distKm / durationH : 70.0;
-    final speedFactor = avgSpeed < 30  ? 1.30
-        : avgSpeed < 50  ? 1.10
-        : avgSpeed < 80  ? 1.00
-        : avgSpeed < 100 ? 1.05
-        :                  1.20;
-    const baseL100  = 35.0;
-    const refMass   = 12000.0;
-    final massFactor = (poidsKg != null && poidsKg > 0)
-        ? (poidsKg / refMass).clamp(0.6, 2.5)
-        : 1.0;
-    return distKm * baseL100 * massFactor * speedFactor / 100.0 * 36.0;
   }
 
   Future<void> _pickDateRange() async {
     final isDark = context.isDark;
+    final locale = localeNotifier.value;
     final range = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
@@ -241,18 +313,29 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
         ),
         child: child!,
       ),
-      locale: const Locale('fr', 'FR'),
+      locale: locale,
     );
     if (range != null) {
+      final diffDays = range.end.difference(range.start).inDays;
+      _entranceCtrl.reset();
       setState(() {
         _startDate = range.start;
         _endDate   = range.end;
       });
+      _loadFirstPage();
+      _persistRangeDays(diffDays);
     }
   }
 
-  String get _dateRangeText {
-    final fmt  = DateFormat('d MMM', 'fr');
+  Future<void> _persistRangeDays(int days) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('stats_range_days', days);
+    } catch (_) {}
+  }
+
+  String _dateRangeText(AppLocalizations l10n) {
+    final fmt  = DateFormat('d MMM', l10n.locale.languageCode);
     final year = _endDate.year;
     return '${fmt.format(_startDate)} - ${fmt.format(_endDate)} $year';
   }
@@ -288,7 +371,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                 const SizedBox(width: 16),
               ],
               Text(
-                'Statistiques',
+                AppLocalizations.of(context).statisticsTitle,
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -310,26 +393,22 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
   }
 
   Widget _buildBody() {
+    final l10n = AppLocalizations.of(context);
+
     Widget _animCard(Widget child, int index) {
       if (MediaQuery.of(context).disableAnimations) return child;
       final start = (index * 0.15).clamp(0.0, 0.7);
       final end = (start + 0.3).clamp(0.0, 1.0);
-      return AnimatedBuilder(
-        animation: _entranceCtrl,
-        builder: (ctx, ch) {
-          final val = CurvedAnimation(
-            parent: _entranceCtrl,
-            curve: Interval(start, end, curve: Curves.easeOutBack),
-          ).value;
-          return Opacity(
-            opacity: val.clamp(0.0, 1.0),
-            child: Transform.scale(
-              scale: 0.85 + (0.15 * val),
-              child: ch,
-            ),
-          );
-        },
-        child: child,
+      final curved = CurvedAnimation(
+        parent: _entranceCtrl,
+        curve: Interval(start, end, curve: Curves.easeOutBack),
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          scale: Tween<double>(begin: 0.85, end: 1.0).animate(curved),
+          child: child,
+        ),
       );
     }
 
@@ -337,42 +416,42 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
     final endOfDay   = DateTime(_endDate.year,   _endDate.month,   _endDate.day, 23, 59, 59);
 
     final filteredTrips = _allTrips.where((trip) {
-      if (_selectedBusId != 'all' && trip['busId'] != _selectedBusId) return false;
+      final busId   = trip['busId'] as String? ?? '';
+      final busData = _busCache[busId];
+      // Only include approved buses (default to approved for legacy)
+      final status  = busData?['validationStatus'] ?? 'approved';
+      if (status != 'approved') return false;
+
+      if (_selectedBusId != 'all' && busId != _selectedBusId) return false;
       final ts = trip['timestamp'] as Timestamp?;
       if (ts == null) return false;
       final date = ts.toDate();
       return !date.isBefore(startOfDay) && !date.isAfter(endOfDay);
-    }).toList()
-      ..sort((a, b) {
-        final tA = (a['timestamp'] as Timestamp?)?.toDate();
-        final tB = (b['timestamp'] as Timestamp?)?.toDate();
-        if (tA == null && tB == null) return 0;
-        if (tA == null) return 1;
-        if (tB == null) return -1;
-        return tB.compareTo(tA);
-      });
+    }).toList();
+    // Already ordered descending by Firestore query; no client-side sort needed.
 
     final tripsPerDayPerDriver = <String, Map<String, int>>{};
-    final tripsPerDayPerBus = <String, Map<String, int>>{};
+    final tripsPerDayPerBus    = <String, Map<String, int>>{};
     for (final trip in filteredTrips) {
       final ts = trip['timestamp'] as Timestamp?;
       if (ts != null) {
-        final date = ts.toDate();
-        final dateKey = DateFormat('yyyy-MM-dd').format(date);
+        final dateKey  = DateFormat('yyyy-MM-dd').format(ts.toDate());
         final driverId = trip['driverId'] as String? ?? '';
-        final busId = trip['busId'] as String? ?? '';
+        final busId    = trip['busId']    as String? ?? '';
         if (driverId.isNotEmpty) {
           tripsPerDayPerDriver.putIfAbsent(dateKey, () => {}).update(
-                driverId, (v) => v + 1, ifAbsent: () => 1);
+              driverId, (v) => v + 1, ifAbsent: () => 1);
         }
         if (busId.isNotEmpty) {
           tripsPerDayPerBus.putIfAbsent(dateKey, () => {}).update(
-                busId, (v) => v + 1, ifAbsent: () => 1);
+              busId, (v) => v + 1, ifAbsent: () => 1);
         }
       }
     }
 
-    final profits      = filteredTrips.map((t) => _calcProfit(t, tripsPerDayPerDriver, tripsPerDayPerBus)).toList();
+    final profits = filteredTrips
+        .map((t) => _calcProfit(t, tripsPerDayPerDriver, tripsPerDayPerBus))
+        .toList();
     double totalRecette = 0, totalDist = 0, totalFuel = 0, totalProfit = 0;
     for (final p in profits) {
       totalRecette += p.recette;
@@ -394,7 +473,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(
-                  'Filtrer par bus:',
+                  l10n.filterByBus,
                   style: TextStyle(
                       fontSize: 11,
                       color: context.appSub,
@@ -404,7 +483,13 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                 StreamBuilder<List<Bus>>(
                   stream: _busService.getBuses(),
                   builder: (_, snap) {
-                    final buses = snap.data ?? [];
+                    final buses = (snap.data ?? BusService().latestBuses ?? [])
+                        .where((b) => b.isApproved)
+                        .toList();
+                    final safeValue = (_selectedBusId == 'all' ||
+                            buses.any((b) => b.busId == _selectedBusId))
+                        ? _selectedBusId
+                        : 'all';
                     return SizedBox(
                       height: 44,
                       child: Container(
@@ -416,7 +501,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                         ),
                         child: DropdownButtonHideUnderline(
                           child: DropdownButton<String>(
-                            value: _selectedBusId,
+                            value: safeValue,
                             isExpanded: true,
                             dropdownColor: context.appCardBg2,
                             style: TextStyle(
@@ -428,7 +513,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                             items: [
                               DropdownMenuItem(
                                 value: 'all',
-                                child: Text('Tous les bus',
+                                child: Text(l10n.allBuses,
                                     style: TextStyle(color: context.appText)),
                               ),
                               ...buses.map((b) => DropdownMenuItem(
@@ -469,7 +554,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                         size: 14, color: context.appSub),
                     const SizedBox(width: 7),
                     Text(
-                      _dateRangeText,
+                      _dateRangeText(AppLocalizations.of(context)),
                       style: TextStyle(
                           fontSize: 12,
                           color: context.appText,
@@ -490,14 +575,14 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
           child: Column(children: [
             Row(children: [
               Expanded(child: _animCard(_StatCard(
-                title: 'Recette totale',
+                title: l10n.totalRevenue,
                 value: '${_fmtDA(totalRecette)} DA',
                 icon: Icons.savings_outlined,
                 iconColor: context.appAccent,
               ), 0)),
               const SizedBox(width: 12),
               Expanded(child: _animCard(_StatCard(
-                title: 'Bénéfice net',
+                title: l10n.netProfit,
                 value: '${isGainTotal ? '+' : '-'}${_fmtDA(totalProfit)} DA',
                 icon: isGainTotal
                     ? Icons.trending_up_rounded
@@ -510,7 +595,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
 
             Row(children: [
               Expanded(child: _animCard(_StatCard(
-                title: 'Trajets',
+                title: l10n.totalTrips,
                 value: '$tripCount',
                 icon: Icons.route_outlined,
                 iconColor: context.appOrange,
@@ -518,7 +603,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
               ), 2)),
               const SizedBox(width: 12),
               Expanded(child: _animCard(_StatCard(
-                title: 'Distance',
+                title: l10n.distanceLabel,
                 value: '${totalDist.toStringAsFixed(0)} km',
                 icon: Icons.map_outlined,
                 iconColor: context.appPrimary,
@@ -526,7 +611,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
               ), 3)),
               const SizedBox(width: 12),
               Expanded(child: _animCard(_StatCard(
-                title: 'Carburant',
+                title: l10n.fuelLabel,
                 value: '${_fmtDA(totalFuel)} DA',
                 icon: Icons.local_gas_station_outlined,
                 iconColor: context.appOrange,
@@ -542,7 +627,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Text(
-            'Détail des trajets ($tripCount)',
+            l10n.tripDetailsFmt(tripCount),
             style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
@@ -555,7 +640,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
           Padding(
             padding: const EdgeInsets.all(40),
             child: Center(
-              child: Text('Aucun trajet pour cette période',
+              child: Text(l10n.noTripsForPeriod,
                   style: TextStyle(color: context.appSub)),
             ),
           )
@@ -571,6 +656,47 @@ class _StatisticsScreenState extends State<StatisticsScreen> with SingleTickerPr
                   child: _TripCard(trip: filteredTrips[i], profit: profits[i]),
                 ),
           ),
+
+        // ── Load More / End indicator ──
+        if (filteredTrips.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: _hasMore
+                ? SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _loadingMore ? null : _loadMorePage,
+                      icon: _loadingMore
+                          ? SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: context.appPurple,
+                              ),
+                            )
+                          : Icon(Icons.expand_more, color: context.appPurple),
+                      label: Text(
+                        _loadingMore ? l10n.loading : l10n.loadMore,
+                        style: TextStyle(color: context.appPurple),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: context.appPurple.withValues(alpha: 0.4)),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      l10n.noMoreTrips,
+                      style: TextStyle(fontSize: 12, color: context.appSub),
+                    ),
+                  ),
+          ),
+        ],
 
         const SizedBox(height: 40),
       ]),
@@ -646,7 +772,13 @@ class _TripCard extends StatelessWidget {
     final isGain  = p.profit >= 0;
     final ts      = trip['timestamp'] as Timestamp?;
     final date    = ts?.toDate();
-    final timeStr = date != null ? DateFormat('HH:mm').format(date) : '';
+    final timeArr = date != null ? DateFormat('HH:mm').format(date) : '';
+    final durationH = (trip['durationHours'] as num?)?.toDouble() ?? 0;
+    String timeDep = '';
+    if (date != null) {
+      final depDate = date.subtract(Duration(seconds: (durationH * 3600).toInt()));
+      timeDep = DateFormat('HH:mm').format(depDate);
+    }
     final lineName = trip['lineName'] as String? ?? '';
     final busName  = trip['busName']  as String? ?? 'Bus';
 
@@ -687,12 +819,17 @@ class _TripCard extends StatelessWidget {
               ),
               const SizedBox(height: 3),
               Text(
+                busName.isNotEmpty ? busName : 'Bus inconnu',
+                style: TextStyle(fontSize: 11, color: context.appSub, fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 2),
+              Text(
                 [
-                  if (timeStr.isNotEmpty) timeStr,
                   if (p.distKm > 0) '${p.distKm.toStringAsFixed(1)} km',
                   if (p.avgSpeedKmh > 0) '${p.avgSpeedKmh.toStringAsFixed(0)} km/h',
                 ].join(' · '),
-                style: TextStyle(fontSize: 11, color: context.appSub),
+                style: TextStyle(fontSize: 10, color: context.appSub),
               ),
             ])),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -712,13 +849,21 @@ class _TripCard extends StatelessWidget {
           children: [
             Divider(height: 1, color: context.appBorder),
             const SizedBox(height: 12),
-            _profitRow(context, Icons.payments_outlined, 'Recette',
+            Row(children: [
+              Icon(Icons.access_time_outlined, size: 14, color: context.appSub),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Heure', style: TextStyle(fontSize: 12, color: context.appDark))),
+              Text('$timeDep - $timeArr', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appDark)),
+            ]),
+            const SizedBox(height: 8),
+            _profitRow(context, Icons.payments_outlined,
+                AppLocalizations.of(context).revenueLabel,
                 p.recette, isRevenue: true),
             const SizedBox(height: 8),
             _profitRow(context, Icons.person_outline,
                 p.chauffeurType == 'monthly'
-                    ? 'Salaire chauffeur (÷30 / ${p.chauffeurTripCount})'
-                    : 'Salaire chauffeur (par trajet)',
+                    ? AppLocalizations.of(context).driverSalaryMonthlyFmt(p.chauffeurTripCount)
+                    : AppLocalizations.of(context).driverSalaryPerTrip,
                 -p.chauffeurDay,
                 detail: p.chauffeurType == 'monthly'
                     ? '${_fmtDA(p.chauffeurSalary)} DA / 30 / ${p.chauffeurTripCount}'
@@ -727,8 +872,8 @@ class _TripCard extends StatelessWidget {
               const SizedBox(height: 8),
               _profitRow(context, Icons.person_2_outlined,
                   p.receveurType == 'monthly'
-                      ? 'Salaire receveur (÷30 / ${p.receveurTripCount})'
-                      : 'Salaire receveur (par trajet)',
+                      ? AppLocalizations.of(context).collectorSalaryMonthlyFmt(p.receveurTripCount)
+                      : AppLocalizations.of(context).collectorSalaryPerTrip,
                   -p.receveurDay,
                   detail: p.receveurType == 'monthly'
                       ? '${_fmtDA(p.receveurSalary)} DA / 30 / ${p.receveurTripCount}'
@@ -736,9 +881,9 @@ class _TripCard extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             _profitRow(context, Icons.local_gas_station_outlined,
-                'Carburant estimé', -p.fuelCostDA,
+                AppLocalizations.of(context).estimatedFuel, -p.fuelCostDA,
                 detail: p.distKm > 0
-                    ? '${p.fuelLiters.toStringAsFixed(1)} L × 36 DA/L'
+                    ? '${p.fuelLiters.toStringAsFixed(1)} L × ${appSettingsNotifier.value.fuelPricePerLiter.toStringAsFixed(0)} DA/L'
                     : null),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
@@ -751,7 +896,7 @@ class _TripCard extends StatelessWidget {
                 size: 18,
               ),
               const SizedBox(width: 8),
-              Expanded(child: Text('Bénéfice net',
+              Expanded(child: Text(AppLocalizations.of(context).netProfit,
                   style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -801,4 +946,4 @@ Widget _profitRow(
 
 String _fmtDA(double v) => v.abs()
     .toStringAsFixed(0)
-    .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => '\u202F');
+    .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ' ');

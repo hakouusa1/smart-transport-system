@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/bus_model.dart';
 import '../services/location_service.dart';
+import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import '../theme_notifier.dart';
 import '../widgets/bus_loading_indicator.dart';
@@ -23,7 +24,6 @@ class BusTrackingScreen extends StatefulWidget {
 class _BusTrackingScreenState extends State<BusTrackingScreen> {
   final LocationService _locationService = LocationService();
   final MapController _mapController = MapController();
-  final DraggableScrollableController _sheetController = DraggableScrollableController();
 
   StreamSubscription<BusLocation?>? _busLocationSub;
   StreamSubscription<DocumentSnapshot>? _busSub;
@@ -34,7 +34,8 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
   bool _isLoading = true;
   bool _busOffline = false;
   String _lastUpdateTime = '--:--:--';
-  bool _followBus = true;
+  bool _isZoomedOnBus = false;
+  bool _mapReady = false;
 
   // ETA from Mapbox
   int _etaMinutes = 0;
@@ -85,7 +86,6 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
     _busLocationSub?.cancel();
     _busSub?.cancel();
     _etaRefreshTimer?.cancel();
-    _sheetController.dispose();
     super.dispose();
   }
 
@@ -107,8 +107,32 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
         _totalRouteDistanceMeters = result.distanceMeters;
       });
       _updateRouteProgress();
-      _fitRoute();
+      if (_mapReady) _fitRoute();
     }
+  }
+
+  void _onMapReady() {
+    _mapReady = true;
+    if (_routeLoaded && _fullRoutePoints.isNotEmpty) {
+      _fitRoute();
+    } else {
+      _fitDepartureArrival();
+    }
+  }
+
+  void _fitDepartureArrival() {
+    final bus = _currentBus ?? widget.bus;
+    if (!bus.hasDeparture || !bus.hasArrival) return;
+    final points = [
+      LatLng(bus.departureLat!, bus.departureLng!),
+      LatLng(bus.arrivalLat!, bus.arrivalLng!),
+    ];
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: LatLngBounds.fromPoints(points),
+        padding: const EdgeInsets.all(80),
+      ),
+    );
   }
 
   Future<void> _fetchETAFromMapbox() async {
@@ -220,8 +244,8 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
         _fetchETAFromMapbox();
       }
 
-      if (_followBus) {
-        _mapController.move(location.latLng, _mapController.camera.zoom);
+      if (_isZoomedOnBus) {
+        _mapController.move(location.latLng, 16.0);
       }
     });
   }
@@ -276,7 +300,6 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
         _mapController.rotate(0);
       }
     }
-    _followBus = false;
   }
 
   void _fitRoute() {
@@ -286,13 +309,22 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
       CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(60)),
     );
     _mapController.rotate(0);
-    _followBus = false;
   }
 
-  void _centerOnBus() {
-    if (_busLocation != null) {
-      _followBus = true;
-      _mapController.move(_busLocation!.latLng, 16);
+  void _toggleZoom() {
+    if (_busLocation == null) return;
+    setState(() => _isZoomedOnBus = !_isZoomedOnBus);
+    if (_isZoomedOnBus) {
+      _mapController.move(_busLocation!.latLng, 16.0);
+    } else {
+      if (_fullRoutePoints.isNotEmpty) {
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: LatLngBounds.fromPoints(_fullRoutePoints),
+            padding: const EdgeInsets.all(60),
+          ),
+        );
+      }
     }
   }
 
@@ -320,14 +352,14 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
       mapCenter = _busLocation!.latLng;
     }
 
-    final sheetBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final textPrimary = isDark ? Colors.white : Colors.black87;
     final textSecondary = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
     final dividerColor = isDark ? Colors.grey.shade800 : Colors.grey.shade200;
+    final sheetBg = isDark ? const Color(0xFF1E1E1E) : Colors.white;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(bus.lineName),
+        title: Text(bus.displayLineName),
         actions: [
           if (hasLocation && !_busOffline)
             Container(
@@ -363,602 +395,554 @@ class _BusTrackingScreenState extends State<BusTrackingScreen> {
                 ],
               ),
             )
-          : Stack(
+          : Column(
               children: [
-                // ── Full-screen map ──────────────────────────────────────
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: mapCenter,
-                    initialZoom:
-                        (bus.hasDeparture && bus.hasArrival) ? 10 : hasLocation ? 14 : 12,
-                    onPositionChanged: (pos, gesture) {
-                      if (gesture) _followBus = false;
-                    },
-                  ),
-                  children: [
-                    TileLayer(
-                      urlTemplate: RouteService.tileUrl,
-                      tileSize: 512,
-                      zoomOffset: -1,
-                    ),
-                    if (_preRoute.length >= 2)
-                      PolylineLayer(polylines: [
-                        Polyline(
-                            points: _preRoute,
-                            color: Colors.blue.withValues(alpha: 0.5),
-                            strokeWidth: 5),
-                      ]),
-                    if (_completedRoutePoints.length >= 2)
-                      PolylineLayer(polylines: [
-                        Polyline(
-                            points: _completedRoutePoints,
-                            color: Colors.green.withValues(alpha: 0.8),
-                            strokeWidth: 5),
-                      ]),
-                    if (_remainingRoutePoints.length >= 2)
-                      PolylineLayer(polylines: [
-                        Polyline(
-                            points: _remainingRoutePoints,
-                            color: Colors.red.withValues(alpha: 0.7),
-                            strokeWidth: 4,
-                            pattern: const StrokePattern.dotted()),
-                      ]),
-                    if (!_routeLoaded && hasLocation && !_busOffline && bus.hasArrival)
-                      PolylineLayer(polylines: [
-                        Polyline(
-                          points: [
-                            _busLocation!.latLng,
-                            LatLng(bus.arrivalLat!, bus.arrivalLng!)
-                          ],
-                          color: Colors.red.withValues(alpha: 0.5),
-                          strokeWidth: 3,
-                          pattern: const StrokePattern.dotted(),
+                // ── Map — top 40% ─────────────────────────────────────────
+                Flexible(
+                  flex: 40,
+                  child: Stack(
+                    children: [
+                      FlutterMap(
+                        mapController: _mapController,
+                        options: MapOptions(
+                          initialCenter: mapCenter,
+                          initialZoom: (bus.hasDeparture && bus.hasArrival)
+                              ? 10
+                              : hasLocation
+                                  ? 14
+                                  : 12,
+                          onMapReady: _onMapReady,
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag,
+                          ),
                         ),
-                      ]),
-                    MarkerLayer(
-                      markers: [
-                        if (bus.hasDeparture)
-                          Marker(
-                            point: LatLng(bus.departureLat!, bus.departureLng!),
-                            width: 70,
-                            height: 60,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 5, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(4),
-                                      boxShadow: [
-                                        BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.15),
-                                            blurRadius: 3)
-                                      ]),
-                                  child: const Text('Départ',
-                                      style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.green)),
-                                ),
-                                const Icon(Icons.trip_origin,
-                                    color: Colors.green, size: 28),
-                              ],
-                            ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: RouteService.tileUrl,
+                            userAgentPackageName: 'com.example.transporteur_app',
+                            tileSize: config.mapTileSize,
+                            zoomOffset: config.mapZoomOffset,
                           ),
-                        if (bus.hasArrival)
-                          Marker(
-                            point: LatLng(bus.arrivalLat!, bus.arrivalLng!),
-                            width: 70,
-                            height: 60,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 5, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(4),
-                                      boxShadow: [
-                                        BoxShadow(
-                                            color: Colors.black
-                                                .withValues(alpha: 0.15),
-                                            blurRadius: 3)
-                                      ]),
-                                  child: const Text('Arrivée',
-                                      style: TextStyle(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.red)),
-                                ),
-                                const Icon(Icons.location_on,
-                                    color: Colors.red, size: 30),
-                              ],
-                            ),
-                          ),
-                        if (hasLocation && !_busOffline)
-                          Marker(
-                            point: _busLocation!.latLng,
-                            width: 52,
-                            height: 52,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                      color: Colors.green.withValues(alpha: 0.3),
-                                      blurRadius: 12,
-                                      spreadRadius: 4)
+                          if (_preRoute.length >= 2)
+                            PolylineLayer(polylines: [
+                              Polyline(
+                                  points: _preRoute,
+                                  color: Colors.blue.withValues(alpha: 0.5),
+                                  strokeWidth: 4,
+                                  pattern: const StrokePattern.dotted()),
+                            ]),
+                          if (_completedRoutePoints.length >= 2)
+                            PolylineLayer(polylines: [
+                              Polyline(
+                                  points: _completedRoutePoints,
+                                  color: Colors.blue.withValues(alpha: 0.35),
+                                  strokeWidth: 5),
+                            ]),
+                          if (_remainingRoutePoints.length >= 2)
+                            PolylineLayer(polylines: [
+                              Polyline(
+                                  points: _remainingRoutePoints,
+                                  color: Colors.blue,
+                                  strokeWidth: 5),
+                            ]),
+                          if (!_routeLoaded && hasLocation && !_busOffline && bus.hasArrival)
+                            PolylineLayer(polylines: [
+                              Polyline(
+                                points: [
+                                  _busLocation!.latLng,
+                                  LatLng(bus.arrivalLat!, bus.arrivalLng!)
                                 ],
+                                color: Colors.blue.withValues(alpha: 0.5),
+                                strokeWidth: 3,
+                                pattern: const StrokePattern.dotted(),
                               ),
-                              child: const Icon(Icons.directions_bus,
-                                  color: Colors.white, size: 24),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-
-                // ── Offline banner ───────────────────────────────────────
-                if (_busOffline)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(14),
-                      color: Colors.orange.shade100,
-                      child: Row(children: [
-                        Icon(Icons.wifi_off,
-                            color: Colors.orange.shade800, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                            child: Text(
-                          'Ce bus n\'est pas en trajet actuellement.',
-                          style: TextStyle(
-                              color: Colors.orange.shade900, fontSize: 13),
-                        )),
-                      ]),
-                    ),
-                  ),
-
-                // ── Zoom FABs (top-right) ────────────────────────────────
-                Positioned(
-                  top: _busOffline ? 60 : 12,
-                  right: 12,
-                  child: Column(children: [
-                    FloatingActionButton.small(
-                      heroTag: 'zoomIn',
-                      onPressed: () => _mapController.move(
-                          _mapController.camera.center,
-                          _mapController.camera.zoom + 1),
-                      backgroundColor: Colors.white,
-                      child: const Icon(Icons.add, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 8),
-                    FloatingActionButton.small(
-                      heroTag: 'zoomOut',
-                      onPressed: () => _mapController.move(
-                          _mapController.camera.center,
-                          _mapController.camera.zoom - 1),
-                      backgroundColor: Colors.white,
-                      child: const Icon(Icons.remove, color: Colors.black87),
-                    ),
-                  ]),
-                ),
-
-                // ── Fit / Center FABs (above the bottom sheet) ──────────
-                Positioned(
-                  bottom: 230,
-                  right: 12,
-                  child: Column(children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: FloatingActionButton.small(
-                        heroTag: 'fitAll',
-                        onPressed: _fitAllMarkers,
-                        backgroundColor: Colors.white,
-                        child:
-                            const Icon(Icons.fit_screen, color: Colors.purple),
-                      ),
-                    ),
-                    if (hasLocation && !_busOffline)
-                      FloatingActionButton.small(
-                        heroTag: 'centerBus',
-                        onPressed: _centerOnBus,
-                        backgroundColor: Colors.white,
-                        child: const Icon(Icons.directions_bus,
-                            color: Colors.green),
-                      ),
-                  ]),
-                ),
-
-                // ── Draggable bottom sheet ───────────────────────────────
-                DraggableScrollableSheet(
-                  controller: _sheetController,
-                  initialChildSize: 0.28,
-                  minChildSize: 0.17,
-                  maxChildSize: 0.75,
-                  builder: (context, scrollController) {
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: sheetBg,
-                        borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(24)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 20,
-                            offset: const Offset(0, -4),
+                            ]),
+                          MarkerLayer(
+                            markers: [
+                              if (bus.hasDeparture)
+                                Marker(
+                                  point: LatLng(bus.departureLat!, bus.departureLng!),
+                                  width: 70,
+                                  height: 60,
+                                  alignment: Alignment.bottomCenter,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(4),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                  color: Colors.black.withValues(alpha: 0.15),
+                                                  blurRadius: 3)
+                                            ]),
+                                        child: const Text('Départ',
+                                            style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green)),
+                                      ),
+                                      const Icon(Icons.trip_origin,
+                                          color: Colors.green, size: 28),
+                                    ],
+                                  ),
+                                ),
+                              if (bus.hasArrival)
+                                Marker(
+                                  point: LatLng(bus.arrivalLat!, bus.arrivalLng!),
+                                  width: 70,
+                                  height: 60,
+                                  alignment: Alignment.bottomCenter,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(4),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                  color: Colors.black.withValues(alpha: 0.15),
+                                                  blurRadius: 3)
+                                            ]),
+                                        child: const Text('Arrivée',
+                                            style: TextStyle(
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.red)),
+                                      ),
+                                      const Icon(Icons.location_on,
+                                          color: Colors.red, size: 30),
+                                    ],
+                                  ),
+                                ),
+                              if (hasLocation && !_busOffline)
+                                Marker(
+                                  point: _busLocation!.latLng,
+                                  width: 52,
+                                  height: 52,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.green,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                            color: Colors.green.withValues(alpha: 0.3),
+                                            blurRadius: 12,
+                                            spreadRadius: 4)
+                                      ],
+                                    ),
+                                    child: const Icon(Icons.directions_bus,
+                                        color: Colors.white, size: 24),
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),
-                      child: ListView(
-                        controller: scrollController,
-                        padding: EdgeInsets.zero,
-                        children: [
-                          // ─ Drag handle ─
-                          Center(
-                            child: Container(
-                              width: 40,
-                              height: 4,
-                              margin:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? Colors.grey.shade600
-                                    : Colors.grey.shade300,
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          ),
 
-                          // ─ Bus header ─
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      // Offline banner
+                      if (_busOffline)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(10),
+                            color: Colors.orange.shade100,
                             child: Row(children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: bus.isOnTrip
-                                      ? Colors.green.withValues(alpha: 0.1)
-                                      : Colors.grey.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(
-                                  Icons.directions_bus,
-                                  color: bus.isOnTrip
-                                      ? Colors.green
-                                      : Colors.grey,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
+                              Icon(Icons.wifi_off,
+                                  color: Colors.orange.shade800, size: 18),
+                              const SizedBox(width: 8),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(bus.lineName,
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                            color: textPrimary)),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      bus.busName.isNotEmpty
-                                          ? bus.busName
-                                          : 'Bus ${bus.busNumber}',
-                                      style: TextStyle(
-                                          color: textSecondary, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 10, vertical: 5),
-                                decoration: BoxDecoration(
-                                  color: bus.isOnTrip
-                                      ? Colors.green.shade50
-                                      : bus.isOnline
-                                          ? Colors.blue.shade50
-                                          : Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
                                 child: Text(
-                                  bus.statusText,
+                                  'Ce bus n\'est pas en trajet actuellement.',
                                   style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                    color: bus.isOnTrip
-                                        ? Colors.green.shade700
-                                        : bus.isOnline
-                                            ? Colors.blue.shade700
-                                            : Colors.grey.shade600,
-                                  ),
+                                      color: Colors.orange.shade900, fontSize: 12),
                                 ),
                               ),
                             ]),
                           ),
+                        ),
 
-                          Divider(height: 1, color: dividerColor),
-
-                          // ─ Trip details (only when online) ─
+                      // Zoom + fit controls
+                      Positioned(
+                        top: _busOffline ? 48 : 10,
+                        right: 10,
+                        child: Column(children: [
+                          _MapBtn(
+                            icon: Icons.add,
+                            onTap: () => _mapController.move(
+                                _mapController.camera.center,
+                                _mapController.camera.zoom + 1),
+                          ),
+                          const SizedBox(height: 6),
+                          _MapBtn(
+                            icon: Icons.remove,
+                            onTap: () => _mapController.move(
+                                _mapController.camera.center,
+                                _mapController.camera.zoom - 1),
+                          ),
+                          const SizedBox(height: 6),
+                          _MapBtn(
+                            icon: Icons.fit_screen,
+                            color: Colors.purple,
+                            onTap: _fitAllMarkers,
+                          ),
                           if (hasLocation && !_busOffline) ...[
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 6),
+                            _MapBtn(
+                              icon: _isZoomedOnBus ? Icons.map : Icons.directions_bus,
+                              color: Colors.green,
+                              onTap: _toggleZoom,
+                            ),
+                          ],
+                        ]),
+                      ),
+                    ],
+                  ),
+                ),
 
-                            // Progress bar
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
+                // ── Scrollable details — bottom 60% ───────────────────────
+                Flexible(
+                  flex: 60,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: sheetBg,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, -3),
+                        ),
+                      ],
+                    ),
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ─ Bus header ─
+                          Row(children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: bus.isOnTrip
+                                    ? Colors.green.withValues(alpha: 0.1)
+                                    : Colors.grey.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                Icons.directions_bus,
+                                color: bus.isOnTrip ? Colors.green : Colors.grey,
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        'Progression du trajet',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                            color: textSecondary),
-                                      ),
-                                      Text(
-                                        '${(_routeProgress * 100).toStringAsFixed(0)}%',
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 8),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: LinearProgressIndicator(
-                                      value: _routeProgress,
-                                      minHeight: 8,
-                                      backgroundColor: isDark
-                                          ? Colors.grey.shade800
-                                          : Colors.grey.shade200,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                              Colors.green),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      // Parcourus
-                                      Row(children: [
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: Colors.green,
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _distanceDepartToBusText == '--'
-                                              ? 'Départ'
-                                              : _distanceDepartToBusText,
-                                          style: const TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.green,
-                                              fontWeight: FontWeight.w600),
-                                        ),
-                                        if (_distanceDepartToBusText != '--')
-                                          Text(' parcourus',
-                                              style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: textSecondary)),
-                                      ]),
-                                      // Restants
-                                      Row(children: [
-                                        Text(
-                                          _distanceBusToArrivalText == '--'
-                                              ? 'Arrivée'
-                                              : _distanceBusToArrivalText,
-                                          style: TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.red.shade400,
-                                              fontWeight: FontWeight.w600),
-                                        ),
-                                        if (_distanceBusToArrivalText != '--')
-                                          Text(' restants',
-                                              style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: textSecondary)),
-                                        const SizedBox(width: 4),
-                                        Container(
-                                          width: 8,
-                                          height: 8,
-                                          decoration: BoxDecoration(
-                                            color: Colors.red.shade400,
-                                            borderRadius:
-                                                BorderRadius.circular(2),
-                                          ),
-                                        ),
-                                      ]),
-                                    ],
+                                  Text(bus.displayLineName,
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15,
+                                          color: textPrimary)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    bus.busName.isNotEmpty
+                                        ? bus.busName
+                                        : 'Bus ${bus.busNumber}',
+                                    style: TextStyle(
+                                        color: textSecondary, fontSize: 12),
                                   ),
                                 ],
                               ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: bus.isOnTrip
+                                    ? Colors.green.shade50
+                                    : bus.isOnline
+                                        ? Colors.blue.shade50
+                                        : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                bus.statusText,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: bus.isOnTrip
+                                      ? Colors.green.shade700
+                                      : bus.isOnline
+                                          ? Colors.blue.shade700
+                                          : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ]),
+
+                          Divider(height: 28, color: dividerColor),
+
+                          if (hasLocation && !_busOffline) ...[
+                            // Progress bar
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Progression du trajet',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: textSecondary),
+                                ),
+                                Text(
+                                  '${(_routeProgress * 100).toStringAsFixed(0)}%',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: _routeProgress,
+                                minHeight: 8,
+                                backgroundColor: isDark
+                                    ? Colors.grey.shade800
+                                    : Colors.grey.shade200,
+                                valueColor:
+                                    const AlwaysStoppedAnimation<Color>(Colors.green),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(children: [
+                                  Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _distanceDepartToBusText == '--'
+                                        ? 'Départ'
+                                        : _distanceDepartToBusText,
+                                    style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  if (_distanceDepartToBusText != '--')
+                                    Text(' parcourus',
+                                        style: TextStyle(fontSize: 10, color: textSecondary)),
+                                ]),
+                                Row(children: [
+                                  Text(
+                                    _distanceBusToArrivalText == '--'
+                                        ? 'Arrivée'
+                                        : _distanceBusToArrivalText,
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.red.shade400,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  if (_distanceBusToArrivalText != '--')
+                                    Text(' restants',
+                                        style: TextStyle(fontSize: 10, color: textSecondary)),
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.shade400,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ]),
+                              ],
                             ),
 
                             const SizedBox(height: 20),
 
                             // ETA card
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: _etaColor.withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                      color:
-                                          _etaColor.withValues(alpha: 0.25)),
-                                ),
-                                child: Row(children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Temps estimé',
-                                            style: TextStyle(
-                                                fontSize: 11,
-                                                color: textSecondary)),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _etaText,
-                                          style: TextStyle(
-                                              fontSize: 28,
-                                              fontWeight: FontWeight.bold,
-                                              color: _etaColor),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                      width: 1,
-                                      height: 50,
-                                      color: dividerColor),
-                                  const SizedBox(width: 16),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: _etaColor.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: _etaColor.withValues(alpha: 0.25)),
+                              ),
+                              child: Row(children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text('Arrivée estimée',
+                                      Text('Temps estimé',
                                           style: TextStyle(
-                                              fontSize: 11,
-                                              color: textSecondary)),
+                                              fontSize: 11, color: textSecondary)),
                                       const SizedBox(height: 4),
-                                      Row(children: [
-                                        const Icon(Icons.schedule,
-                                            size: 16, color: Colors.blue),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          _arrivalTimeText,
-                                          style: TextStyle(
-                                              fontSize: 20,
-                                              fontWeight: FontWeight.bold,
-                                              color: textPrimary),
-                                        ),
-                                      ]),
+                                      Text(
+                                        _etaText,
+                                        style: TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                            color: _etaColor),
+                                      ),
                                     ],
                                   ),
-                                ]),
-                              ),
+                                ),
+                                Container(width: 1, height: 50, color: dividerColor),
+                                const SizedBox(width: 16),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('Arrivée estimée',
+                                        style: TextStyle(
+                                            fontSize: 11, color: textSecondary)),
+                                    const SizedBox(height: 4),
+                                    Row(children: [
+                                      const Icon(Icons.schedule,
+                                          size: 16, color: Colors.blue),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        _arrivalTimeText,
+                                        style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: textPrimary),
+                                      ),
+                                    ]),
+                                  ],
+                                ),
+                              ]),
                             ),
 
                             const SizedBox(height: 14),
 
-                            // Speed + last update chips
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
-                              child: Row(children: [
-                                Expanded(
-                                  child: _StatCard(
-                                    icon: Icons.speed,
-                                    label: 'Vitesse',
-                                    value: _busLocation!.speedText,
-                                    color: Colors.blue,
-                                    isDark: isDark,
-                                  ),
+                            // Speed + last update
+                            Row(children: [
+                              Expanded(
+                                child: _StatCard(
+                                  icon: Icons.speed,
+                                  label: 'Vitesse',
+                                  value: _busLocation!.speedText,
+                                  color: Colors.blue,
+                                  isDark: isDark,
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: _StatCard(
-                                    icon: Icons.update,
-                                    label: 'Mise à jour',
-                                    value: _lastUpdateTime,
-                                    color: Colors.teal,
-                                    isDark: isDark,
-                                  ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: _StatCard(
+                                  icon: Icons.update,
+                                  label: 'Mise à jour',
+                                  value: _lastUpdateTime,
+                                  color: Colors.teal,
+                                  isDark: isDark,
                                 ),
-                              ]),
-                            ),
+                              ),
+                            ]),
 
                             const SizedBox(height: 14),
 
                             // Route legend
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
+                            Row(children: [
+                              Expanded(
+                                  child: _LegendItem(
+                                      color: Colors.blue.withValues(alpha: 0.4),
+                                      label: 'Parcouru')),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: _LegendItem(
+                                      color: Colors.blue, label: 'Restant')),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: _LegendItem(
+                                      color: Colors.blue.shade300,
+                                      label: 'Avant départ')),
+                            ]),
+                          ] else ...[
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                               child: Row(children: [
+                                Icon(Icons.wifi_off, color: Colors.orange, size: 20),
+                                const SizedBox(width: 10),
                                 Expanded(
-                                    child: _LegendItem(
-                                        color: Colors.green,
-                                        label: 'Parcouru')),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                    child: _LegendItem(
-                                        color: Colors.red.shade400,
-                                        label: 'Restant')),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                    child: _LegendItem(
-                                        color: Colors.blue,
-                                        label: 'Avant départ')),
+                                  child: Text(
+                                    'Bus hors ligne — aucune donnée disponible.',
+                                    style: TextStyle(
+                                        color: Colors.orange.shade800, fontSize: 13),
+                                  ),
+                                ),
                               ]),
                             ),
-
-                            const SizedBox(height: 28),
-                          ] else ...[
-                            const SizedBox(height: 20),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 20),
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Row(children: [
-                                  Icon(Icons.wifi_off,
-                                      color: Colors.orange, size: 20),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Bus hors ligne — aucune donnée disponible.',
-                                      style: TextStyle(
-                                          color: Colors.orange.shade800,
-                                          fontSize: 13),
-                                    ),
-                                  ),
-                                ]),
-                              ),
-                            ),
-                            const SizedBox(height: 28),
                           ],
                         ],
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ],
             ),
     );
   }
 }
+
+// ── Small map control button ──────────────────────────────────────────────────
+
+class _MapBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  final Color color;
+
+  const _MapBtn({
+    required this.icon,
+    required this.onTap,
+    this.color = Colors.black87,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1), blurRadius: 4),
+          ],
+        ),
+        child: Icon(icon, size: 18, color: color),
+      ),
+    );
+  }
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
 
 class _StatCard extends StatelessWidget {
   final IconData icon;
@@ -1010,6 +994,8 @@ class _StatCard extends StatelessWidget {
     );
   }
 }
+
+// ── Route legend item ─────────────────────────────────────────────────────────
 
 class _LegendItem extends StatelessWidget {
   final Color color;

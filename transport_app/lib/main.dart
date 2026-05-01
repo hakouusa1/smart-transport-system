@@ -11,12 +11,15 @@ import 'screens/main_screen.dart';
 
 import 'screens/subscription_screen.dart';
 import 'theme_notifier.dart';
+import 'locale_notifier.dart';
+import 'l10n/app_localizations.dart';
 import 'screens/pending_screen.dart';
 import 'services/supabase_storage_service.dart';
 import 'services/notification_service.dart';
 import 'widgets/notif_listener.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'widgets/bus_loading_indicator.dart';
+import 'app_settings_notifier.dart';
 
 // Must be a top-level function — runs in a separate isolate when the app is killed.
 @pragma('vm:entry-point')
@@ -28,7 +31,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('fr', null);
+  await Future.wait([
+    initializeDateFormatting('fr', null),
+    initializeDateFormatting('en', null),
+    initializeDateFormatting('ar', null),
+  ]);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await Supabase.initialize(
     url: SupabaseStorageService.supabaseUrl,
@@ -36,6 +43,7 @@ void main() async {
   );
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await NotificationService.init();
+  await appSettingsNotifier.load();
   runApp(const TransporteurApp());
 }
 
@@ -44,25 +52,29 @@ class TransporteurApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (context, themeMode, _) {
-        return MaterialApp(
-          title: 'Transporteur',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
-          themeMode: themeMode,
-          localizationsDelegates: const [
-            GlobalMaterialLocalizations.delegate,
-            GlobalWidgetsLocalizations.delegate,
-            GlobalCupertinoLocalizations.delegate,
-          ],
-          supportedLocales: const [
-            Locale('fr', 'FR'),
-            Locale('en', 'US'),
-          ],
-          home: const AuthWrapper(),
+    return ValueListenableBuilder<Locale>(
+      valueListenable: localeNotifier,
+      builder: (context, locale, _) {
+        return ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeNotifier,
+          builder: (context, themeMode, _) {
+            return MaterialApp(
+              title: 'Transporteur',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light(),
+              darkTheme: AppTheme.dark(),
+              themeMode: themeMode,
+              locale: locale,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: const AuthWrapper(),
+            );
+          },
         );
       },
     );

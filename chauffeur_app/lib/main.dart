@@ -7,7 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'screens/login_page.dart';
 import 'screens/driver_dashboard_page.dart';
-import 'screens/splash_screen.dart';
+
 import 'services/notification_service.dart';
 import 'theme_notifier.dart';
 
@@ -39,7 +39,7 @@ class ChauffeurApp extends StatelessWidget {
         theme: AppTheme.light(),
         darkTheme: AppTheme.dark(),
         themeMode: mode,
-        home: SplashScreen(nextScreen: const AuthWrapper()),
+        home: const AuthWrapper(),
       ),
     );
   }

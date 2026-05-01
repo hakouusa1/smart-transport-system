@@ -8,10 +8,13 @@ import 'package:latlong2/latlong.dart';
 import '../models/bus_model.dart';
 import '../app_config.dart' as config;
 import '../services/route_service.dart';
+import '../services/price_service.dart';
 import 'map_screen.dart';
 import 'pick_on_map_screen.dart';
 import '../theme/app_theme.dart';
+import '../data/algeria_stops.dart';
 import '../widgets/bus_loading_indicator.dart';
+import '../l10n/app_localizations.dart';
 
 const _mapboxToken = config.mapboxToken;
 
@@ -37,6 +40,8 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _debounce;
 
   List<Bus> _matchedBuses = [];
+  Map<String, double> _linePrices = {};
+  Map<String, double?> _segmentPrices = {};
   bool _hasSearched = false;
   bool _isLoadingResults = false;
 
@@ -115,19 +120,39 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_departureLatLng != null && _arrivalLatLng != null) _search();
   }
 
+  /// Filters local Algeria stops instantly (no network), returns matches.
+  List<_Place> _filterLocalStops(String query) {
+    final q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return kAlgeriaStops
+        .where((s) => s.name.toLowerCase().contains(q))
+        .take(5)
+        .map((s) => _Place(
+              name: s.name,
+              fullName: s.name,
+              latLng: LatLng(s.lat, s.lng),
+            ))
+        .toList();
+  }
+
   void _onChanged(String query, String field) {
     setState(() => _activeField = field);
+
+    // Show local results immediately (no delay)
+    final local = _filterLocalStops(query);
+    setState(() => _suggestions = local);
+
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
       if (query.trim().length >= 2) {
-        _fetch(query);
+        _fetch(query, local);
       } else {
         setState(() => _suggestions = []);
       }
     });
   }
 
-  Future<void> _fetch(String query) async {
+  Future<void> _fetch(String query, List<_Place> localResults) async {
     try {
       final url = Uri.parse(
         'https://api.mapbox.com/geocoding/v5/mapbox.places/${Uri.encodeComponent(query)}.json'
@@ -138,16 +163,22 @@ class _SearchScreenState extends State<SearchScreen> {
       if (res.statusCode == 200) {
         final features = jsonDecode(res.body)['features'] as List;
         if (mounted) {
-          setState(() {
-            _suggestions = features.map((f) {
-              final c = f['geometry']['coordinates'] as List;
-              return _Place(
-                name: f['text'] ?? '',
-                fullName: f['place_name'] ?? '',
-                latLng: LatLng(c[1].toDouble(), c[0].toDouble()),
-              );
-            }).toList();
-          });
+          final mapboxResults = features.map((f) {
+            final c = f['geometry']['coordinates'] as List;
+            return _Place(
+              name: f['text'] ?? '',
+              fullName: f['place_name'] ?? '',
+              latLng: LatLng(c[1].toDouble(), c[0].toDouble()),
+            );
+          }).toList();
+
+          // Merge: local first, then Mapbox results (skip duplicates)
+          final localNames = localResults.map((p) => p.name.toLowerCase()).toSet();
+          final merged = <_Place>[
+            ...localResults,
+            ...mapboxResults.where((p) => !localNames.contains(p.name.toLowerCase())),
+          ];
+          setState(() => _suggestions = merged.take(7).toList());
         }
       }
     } catch (_) {}
@@ -182,6 +213,27 @@ class _SearchScreenState extends State<SearchScreen> {
       _reverseGeocode(_arrivalLatLng!, isDeparture: false);
       if (_departureLatLng != null && _arrivalLatLng != null) _search();
     }
+  }
+
+  Future<Map<String, double>> _fetchLinePrices(Set<String> lineIds) async {
+    if (lineIds.isEmpty) return const {};
+    final result = <String, double>{};
+    final list = lineIds.toList();
+    for (var i = 0; i < list.length; i += 30) {
+      final chunk = list.sublist(
+        i,
+        i + 30 > list.length ? list.length : i + 30,
+      );
+      final snap = await FirebaseFirestore.instance
+          .collection('lines')
+          .where(FieldPath.documentId, whereIn: chunk)
+          .get();
+      for (final doc in snap.docs) {
+        final price = (doc.data()['basePrice'] as num?)?.toDouble();
+        if (price != null) result[doc.id] = price;
+      }
+    }
+    return result;
   }
 
   Future<void> _search() async {
@@ -240,7 +292,28 @@ class _SearchScreenState extends State<SearchScreen> {
           return 0;
         });
 
-      setState(() { _matchedBuses = matched; _isLoadingResults = false; });
+      final lineIds = matched.map((b) => b.lineId).where((id) => id.isNotEmpty).toSet();
+      final basePrices = await _fetchLinePrices(lineIds);
+
+      final segmentPrices = <String, double?>{};
+      for (final lineId in lineIds) {
+        try {
+          segmentPrices[lineId] = await PriceService.calculateSegmentPriceForCoords(
+            lineId: lineId,
+            from: _departureLatLng!,
+            to: _arrivalLatLng!,
+          );
+        } catch (_) {
+          segmentPrices[lineId] = null;
+        }
+      }
+
+      setState(() {
+        _matchedBuses = matched;
+        _linePrices = basePrices;
+        _segmentPrices = segmentPrices;
+        _isLoadingResults = false;
+      });
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingResults = false);
@@ -509,7 +582,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 const SizedBox(height: 8),
                 ...onTripBuses.map((trip) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: _SearchBusCard(trip: trip, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus)))),
+                  child: _SearchBusCard(
+                    trip: trip,
+                    segmentPrice: _segmentPrices[trip.bus.lineId],
+                    basePrice: _linePrices[trip.bus.lineId],
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus))),
+                  ),
                 )),
                 if (otherBuses.isNotEmpty) const SizedBox(height: 8),
               ],
@@ -519,7 +597,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 const SizedBox(height: 8),
                 ...otherBuses.map((trip) => Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: _SearchBusCard(trip: trip, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus)))),
+                  child: _SearchBusCard(
+                    trip: trip,
+                    segmentPrice: _segmentPrices[trip.bus.lineId],
+                    basePrice: _linePrices[trip.bus.lineId],
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus))),
+                  ),
                 )),
               ],
             ],
@@ -578,7 +661,39 @@ class _SearchScreenState extends State<SearchScreen> {
 class _SearchBusCard extends StatelessWidget {
   final BusTrip trip;
   final VoidCallback onTap;
-  const _SearchBusCard({required this.trip, required this.onTap});
+  final double? segmentPrice;
+  final double? basePrice;
+  const _SearchBusCard({
+    required this.trip,
+    required this.onTap,
+    this.segmentPrice,
+    this.basePrice,
+  });
+
+  Widget _buildPriceChip(BuildContext context) {
+    final price = segmentPrice ?? basePrice;
+    final label = price != null
+        ? '${price.toStringAsFixed(0)} ${context.tr.currencyDA}'
+        : '---';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: context.appGreen.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.payments_outlined, size: 12, color: context.appGreen),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: context.appGreen),
+        ),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -591,55 +706,73 @@ class _SearchBusCard extends StatelessWidget {
     return Material(
       color: context.appCardBg,
       borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: live ? context.appPrimary.withValues(alpha: 0.3) : context.appBorder),
-          ),
-          child: Row(children: [
-            Container(width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: live ? context.appPrimary.withValues(alpha: 0.1) : context.appCardBg2,
-                  borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: live ? context.appPrimary.withValues(alpha: 0.3) : context.appBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Container(width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: live ? context.appPrimary.withValues(alpha: 0.1) : context.appCardBg2,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.directions_bus_rounded, color: live ? context.appPrimary : context.appSub, size: 22)),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(trip.displayLineName, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.appText)),
+                const SizedBox(height: 2),
+                Text(bus.busName.isNotEmpty ? bus.busName : 'N° ${bus.busNumber}',
+                    style: TextStyle(fontSize: 11, color: context.appSub)),
+                const SizedBox(height: 6),
+                _buildPriceChip(context),
+              ])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(width: 4, height: 4, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                    Text(statusLabel,
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
+                  ]),
                 ),
-                child: Icon(Icons.directions_bus_rounded, color: live ? context.appPrimary : context.appSub, size: 22)),
-            const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(trip.displayLineName, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.appText)),
-              const SizedBox(height: 2),
-              Text(bus.busName.isNotEmpty ? bus.busName : 'N° ${bus.busNumber}',
-                  style: TextStyle(fontSize: 11, color: context.appSub)),
-            ])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Container(width: 4, height: 4, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
-                  const SizedBox(width: 4),
-                  Text(statusLabel,
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: statusColor)),
-                ]),
-              ),
-              const SizedBox(height: 5),
-              if (nextTime != null)
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.schedule_rounded, size: 10, color: context.appSub),
-                  const SizedBox(width: 3),
-                  Text(nextTime,
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: context.appPrimary)),
-                ])
-              else
-                Icon(Icons.arrow_forward_ios, size: 12, color: context.appBorder),
+                const SizedBox(height: 5),
+                if (nextTime != null)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.schedule_rounded, size: 10, color: context.appSub),
+                    const SizedBox(width: 3),
+                    Text(nextTime,
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: context.appPrimary)),
+                  ])
+                else
+                  Icon(Icons.arrow_forward_ios, size: 12, color: context.appBorder),
+              ]),
             ]),
-          ]),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus))),
+                icon: Icon(Icons.map, size: 16),
+                label: Text('Voir sur carte'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.appPrimary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

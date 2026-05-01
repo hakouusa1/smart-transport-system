@@ -58,19 +58,18 @@ class BookingService {
       passengerLng: lng,
     );
 
-    // Atomic capacity check: count active bookings inside a transaction
-    await FirebaseFirestore.instance.runTransaction((tx) async {
-      final countSnap = await _bookings
-          .where('busId', isEqualTo: bus.busId)
-          .where('status', whereIn: ['pending', 'confirmed'])
-          .count()
-          .get();
-      final current = countSnap.count ?? 0;
-      if (current >= bus.capacity) {
-        throw 'Bus complet (${bus.capacity} places). Essayez un autre départ.';
-      }
-      tx.set(_bookings.doc(bookingId), booking.toMap());
-    });
+    // Check capacity before writing (aggregation queries cannot run inside a transaction)
+    final countSnap = await _bookings
+        .where('busId', isEqualTo: bus.busId)
+        .where('status', whereIn: ['pending', 'confirmed'])
+        .count()
+        .get();
+    final current = countSnap.count ?? 0;
+    if (current >= bus.capacity) {
+      throw 'Bus complet (${bus.capacity} places). Essayez un autre départ.';
+    }
+
+    await _bookings.doc(bookingId).set(booking.toMap());
 
     // Notify the driver
     try {

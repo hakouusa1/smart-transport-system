@@ -109,6 +109,7 @@ class AdminService {
   static Future<void> createLine({
     required String departure,
     required String arrival,
+    required double basePrice,
     List<String> stops = const [],
     String adminId = '',
     double? departureLat,
@@ -116,6 +117,9 @@ class AdminService {
     double? arrivalLat,
     double? arrivalLng,
   }) async {
+    if (basePrice <= 0) {
+      throw Exception('Le prix de base doit être supérieur à 0');
+    }
     final ref = _db.collection('lines').doc();
     await ref.set({
       'lineId': ref.id,
@@ -123,6 +127,7 @@ class AdminService {
       'arrival': arrival,
       'name': '$departure - $arrival',
       'stops': stops,
+      'basePrice': basePrice,
       'isActive': true,
       'createdBy': adminId,
       'createdAt': Timestamp.now(),
@@ -307,5 +312,238 @@ class AdminService {
         .where('driverStatus', isEqualTo: 'on_trip')
         .snapshots()
         .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  // ══════════════════════════════════════
+  // STOPS
+  // ══════════════════════════════════════
+  static Future<void> createStop({
+    required String name,
+    required String type,
+    required double lat,
+    required double lng,
+  }) async {
+    final ref = _db.collection('stops').doc();
+    await ref.set({
+      'id': ref.id,
+      'name': name,
+      'type': type,
+      'lat': lat,
+      'lng': lng,
+      'createdAt': Timestamp.now(),
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  static Stream<List<Map<String, dynamic>>> getStops() {
+    return _db.collection('stops')
+        .orderBy('name')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  static Stream<List<Map<String, dynamic>>> getStopsByType(String type) {
+    return _db.collection('stops')
+        .where('type', isEqualTo: type)
+        .orderBy('name')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  static Future<void> updateStop(String stopId, Map<String, dynamic> data) async {
+    data['updatedAt'] = Timestamp.now();
+    await _db.collection('stops').doc(stopId).update(data);
+  }
+
+  static Future<void> deleteStop(String stopId) async {
+    await _db.collection('stops').doc(stopId).delete();
+  }
+
+  // ══════════════════════════════════════
+  // LINE STOPS
+  // ══════════════════════════════════════
+  static Future<void> addStopToLine({
+    required String lineId,
+    required String stopId,
+    required int orderIndex,
+  }) async {
+    // Check if orderIndex is unique for this line
+    final existing = await _db.collection('lines').doc(lineId).collection('lineStops')
+        .where('orderIndex', isEqualTo: orderIndex)
+        .get();
+    if (existing.docs.isNotEmpty) {
+      throw Exception('Order index already exists for this line');
+    }
+
+    final ref = _db.collection('lines').doc(lineId).collection('lineStops').doc();
+    await ref.set({
+      'id': ref.id,
+      'lineId': lineId,
+      'stopId': stopId,
+      'orderIndex': orderIndex,
+      'createdAt': Timestamp.now(),
+    });
+  }
+
+  static Stream<List<Map<String, dynamic>>> getLineStops(String lineId) {
+    return _db.collection('lines').doc(lineId).collection('lineStops')
+        .orderBy('orderIndex')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  static Future<void> updateLineStop(String lineId, String lineStopId, Map<String, dynamic> data) async {
+    // If updating orderIndex, check uniqueness
+    if (data.containsKey('orderIndex')) {
+      final existing = await _db.collection('lines').doc(lineId).collection('lineStops')
+          .where('orderIndex', isEqualTo: data['orderIndex'])
+          .get();
+      if (existing.docs.isNotEmpty && existing.docs.first.id != lineStopId) {
+        throw Exception('Order index already exists for this line');
+      }
+    }
+    await _db.collection('lines').doc(lineId).collection('lineStops').doc(lineStopId).update(data);
+  }
+
+  static Future<void> removeStopFromLine(String lineId, String lineStopId) async {
+    await _db.collection('lines').doc(lineId).collection('lineStops').doc(lineStopId).delete();
+  }
+
+  // ══════════════════════════════════════
+  // SEGMENT PRICES
+  // ══════════════════════════════════════
+  static Future<void> setSegmentPrice({
+    required String lineId,
+    required String fromStopId,
+    required String toStopId,
+    required double price,
+  }) async {
+    if (price <= 0) {
+      throw Exception('Price must be positive');
+    }
+    // Validate that from and to are consecutive in the line
+    final lineStopsSnap = await _db.collection('lines').doc(lineId).collection('lineStops')
+        .orderBy('orderIndex')
+        .get();
+    final lineStops = lineStopsSnap.docs.map((d) => d.data()).toList();
+    final stopIds = lineStops.map((ls) => ls['stopId'] as String).toList();
+    final fromIndex = stopIds.indexOf(fromStopId);
+    final toIndex = stopIds.indexOf(toStopId);
+    if (fromIndex == -1 || toIndex == -1 || (toIndex - fromIndex) != 1) {
+      throw Exception('Stops must be consecutive in the line');
+    }
+
+    // Check if segment already exists
+    final existingSnap = await _db.collection('lines').doc(lineId).collection('segmentPrices')
+        .where('fromStopId', isEqualTo: fromStopId)
+        .where('toStopId', isEqualTo: toStopId)
+        .get();
+
+    if (existingSnap.docs.isNotEmpty) {
+      // Update existing segment
+      final docId = existingSnap.docs.first.id;
+      await _db.collection('lines').doc(lineId).collection('segmentPrices').doc(docId).update({
+        'price': price,
+      });
+    } else {
+      final ref = _db.collection('lines').doc(lineId).collection('segmentPrices').doc();
+      await ref.set({
+        'id': ref.id,
+        'lineId': lineId,
+        'fromStopId': fromStopId,
+        'toStopId': toStopId,
+        'price': price,
+        'createdAt': Timestamp.now(),
+      });
+    }
+  }
+
+  static Stream<List<Map<String, dynamic>>> getSegmentPrices(String lineId) {
+    return _db.collection('lines').doc(lineId).collection('segmentPrices')
+        .orderBy('fromStopId')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  static Future<void> updateSegmentPrice(String lineId, String segmentPriceId, Map<String, dynamic> data) async {
+    // If updating stops, re-validate consecutiveness
+    if (data.containsKey('fromStopId') || data.containsKey('toStopId')) {
+      final fromStopId = data['fromStopId'] ?? (await _db.collection('lines').doc(lineId).collection('segmentPrices').doc(segmentPriceId).get()).data()?['fromStopId'];
+      final toStopId = data['toStopId'] ?? (await _db.collection('lines').doc(lineId).collection('segmentPrices').doc(segmentPriceId).get()).data()?['toStopId'];
+      final lineStops = await _db.collection('lines').doc(lineId).collection('lineStops')
+          .orderBy('orderIndex')
+          .get();
+      final stopIds = lineStops.docs.map((d) => d.data()['stopId'] as String).toList();
+      final fromIndex = stopIds.indexOf(fromStopId);
+      final toIndex = stopIds.indexOf(toStopId);
+      if (fromIndex == -1 || toIndex == -1 || (toIndex - fromIndex) != 1) {
+        throw Exception('Stops must be consecutive in the line');
+      }
+    }
+    await _db.collection('lines').doc(lineId).collection('segmentPrices').doc(segmentPriceId).update(data);
+  }
+
+  static Future<void> deleteSegmentPrice(String lineId, String segmentPriceId) async {
+    await _db.collection('lines').doc(lineId).collection('segmentPrices').doc(segmentPriceId).delete();
+  }
+
+  // ══════════════════════════════════════
+  // TRIP PRICE CALCULATION
+  // ══════════════════════════════════════
+  static Future<double> calculateTripPrice({
+    required String lineId,
+    required String departureStopId,
+    required String destinationStopId,
+  }) async {
+    // 1. Get all stops of the line ordered by order_index
+    final lineStopsSnap = await _db.collection('lines').doc(lineId).collection('lineStops')
+        .orderBy('orderIndex')
+        .get();
+    final lineStops = lineStopsSnap.docs.map((d) => d.data()).toList();
+    final stopIds = lineStops.map((ls) => ls['stopId'] as String).toList();
+
+    // 2. Find departure and destination positions
+    final departureIndex = stopIds.indexOf(departureStopId);
+    final destinationIndex = stopIds.indexOf(destinationStopId);
+
+    // 3. Ensure departure comes before destination
+    if (departureIndex == -1) {
+      throw Exception('Departure stop not found in line');
+    }
+    if (destinationIndex == -1) {
+      throw Exception('Destination stop not found in line');
+    }
+    if (departureIndex >= destinationIndex) {
+      throw Exception('Departure stop must come before destination stop');
+    }
+
+    // 4. Get all segments for the line
+    final segmentsSnap = await _db.collection('lines').doc(lineId).collection('segmentPrices').get();
+    final segments = segmentsSnap.docs.map((d) => d.data()).toList();
+
+    // Create a map for quick lookup of segment prices
+    final segmentPrices = <String, double>{};
+    for (final segment in segments) {
+      final fromStopId = segment['fromStopId'] as String;
+      final toStopId = segment['toStopId'] as String;
+      final price = (segment['price'] as num).toDouble();
+      segmentPrices['$fromStopId-$toStopId'] = price;
+    }
+
+    // 5. Sum all segment prices between departure and destination
+    double totalPrice = 0.0;
+    for (int i = departureIndex; i < destinationIndex; i++) {
+      final fromStopId = stopIds[i];
+      final toStopId = stopIds[i + 1];
+      final segmentKey = '$fromStopId-$toStopId';
+      final price = segmentPrices[segmentKey];
+      if (price == null) {
+        throw Exception('Missing segment price for $segmentKey');
+      }
+      totalPrice += price;
+    }
+
+    // 6. Return total price
+    return totalPrice;
   }
 }

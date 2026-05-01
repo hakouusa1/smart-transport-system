@@ -4,10 +4,26 @@ import '../models/bus_model.dart';
 import 'auth_service.dart';
 
 class BusService {
+  // ── Singleton ──
+  static final BusService _instance = BusService._internal();
+  factory BusService() => _instance;
+  BusService._internal();
+
   final CollectionReference _busesCollection =
-  FirebaseFirestore.instance.collection('buses');
+      FirebaseFirestore.instance.collection('buses');
   final AuthService _authService = AuthService();
   final Uuid _uuid = const Uuid();
+
+  // Shared broadcast stream — one Firestore listener for all screens.
+  // Recreated automatically when the authenticated owner changes.
+  String? _cachedOwnerId;
+  Stream<List<Bus>>? _busesStream;
+  List<Bus>? _latestBuses;
+
+  /// The most recently emitted buses list, or null if the stream has not emitted yet.
+  /// Use this to pre-populate UI before subscribing so late subscribers don't miss
+  /// the initial Firestore emission.
+  List<Bus>? get latestBuses => _latestBuses;
 
   /// Get current owner's ID
   String get _ownerId => _authService.currentUser?.uid ?? '';
@@ -36,17 +52,27 @@ class BusService {
     }
   }
 
-  /// Get all buses for current owner (real-time stream)
+  /// Get all buses for current owner (real-time stream).
+  /// Returns a single shared broadcast stream — all screens reuse one Firestore listener.
   Stream<List<Bus>> getBuses() {
-    return _busesCollection
-        .where('ownerId', isEqualTo: _ownerId)
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        return Bus.fromMap(doc.data() as Map<String, dynamic>);
-      }).toList();
-    });
+    final uid = _ownerId;
+    if (_busesStream == null || _cachedOwnerId != uid) {
+      _cachedOwnerId = uid;
+      _latestBuses = null;
+      _busesStream = _busesCollection
+          .where('ownerId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((snapshot) {
+            final buses = snapshot.docs
+                .map((doc) => Bus.fromMap(doc.data() as Map<String, dynamic>))
+                .toList();
+            _latestBuses = buses;
+            return buses;
+          })
+          .asBroadcastStream();
+    }
+    return _busesStream!;
   }
 
   /// Update an existing bus
@@ -69,12 +95,29 @@ class BusService {
     }
   }
 
-  /// Delete a bus
+  /// Delete a bus (hard-delete — permanently removes the document).
+  /// Consider using [archiveBus] instead to preserve historical data.
   Future<void> deleteBus(String busId) async {
     try {
       await _busesCollection.doc(busId).delete();
     } catch (e) {
       throw 'Erreur lors de la suppression: $e';
+    }
+  }
+
+  /// Soft-delete: marks bus as archived instead of permanently removing it.
+  /// Historical trip data and logs are preserved for reporting.
+  /// To use soft-delete, replace `deleteBus(id)` with `archiveBus(id)` in
+  /// the screen layer and update `getBuses()` to filter out `isArchived == true`.
+  Future<void> archiveBus(String busId) async {
+    try {
+      await _busesCollection.doc(busId).update({
+        'isArchived': true,
+        'archivedAt': FieldValue.serverTimestamp(),
+        'isActive': false,
+      });
+    } catch (e) {
+      throw 'Erreur lors de l\'archivage: $e';
     }
   }
 

@@ -1,8 +1,8 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
+import '../l10n/app_localizations.dart';
 import 'register_screen.dart';
 import '../widgets/bus_loading_indicator.dart';
 
@@ -26,15 +26,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 700));
+    _anim = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
     _fade = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOut));
-    _slide = Tween<Offset>(begin: const Offset(0, 0.12), end: Offset.zero)
+    _slide = Tween<Offset>(begin: const Offset(0, 0.08), end: Offset.zero)
         .animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic));
     _anim.forward();
   }
 
   @override
-  void dispose() { _anim.dispose(); _emailController.dispose(); _passwordController.dispose(); super.dispose(); }
+  void dispose() {
+    _anim.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
@@ -42,125 +47,189 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       await _authService.signIn(email: _emailController.text, password: _passwordController.text);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.toString()), backgroundColor: Theme.of(context).colorScheme.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Theme.of(context).colorScheme.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.all(16),
+        ));
+      }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tr = context.tr;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.light),
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: context.isDark ? Brightness.light : Brightness.dark,
+      ),
       child: Scaffold(
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: AppTheme.primaryGradient,
-          ),
-          child: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: FadeTransition(
-                  opacity: _fade,
-                  child: SlideTransition(
-                    position: _slide,
-                    child: Column(children: [
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 2)),
-                        child: const Icon(Icons.directions_bus_rounded, size: 48, color: Colors.white),
-                      ),
-                      const SizedBox(height: 18),
-                      const Text('Voyageur', style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 1)),
-                      const SizedBox(height: 6),
-                      Text('Suivez vos bus en temps réel', style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.8))),
-                      const SizedBox(height: 32),
-                      ClipRRect(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: FadeTransition(
+                opacity: _fade,
+                child: SlideTransition(
+                  position: _slide,
+                  child: Column(children: [
+                    const SizedBox(height: 32),
+
+                    // Logo — transparent on app background
+                    Image.asset(
+                      'assets/images/massar_logo.webp',
+                      height: 90,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      tr.appTagline,
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: context.appDark),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      tr.appDescription,
+                      style: TextStyle(fontSize: 13, color: context.appSub),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 40),
+
+                    // Form card
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: context.appCardBg,
                         borderRadius: BorderRadius.circular(20),
-                        child: BackdropFilter(
-                          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                          child: Container(
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: Colors.white.withValues(alpha: 0.2))),
-                            child: Form(
-                              key: _formKey,
-                              child: Column(children: [
-                                _GlassField(controller: _emailController, label: 'Email', hint: 'voyageur@email.com',
-                                    icon: Icons.email_outlined, keyboard: TextInputType.emailAddress, action: TextInputAction.next,
-                                    validator: (v) => v == null || v.trim().isEmpty ? 'Email requis' : null),
-                                const SizedBox(height: 16),
-                                _GlassField(controller: _passwordController, label: 'Mot de passe', hint: '••••••',
-                                    icon: Icons.lock_outlined, obscure: _obscure, action: TextInputAction.done,
-                                    onSubmit: (_) => _login(),
-                                    suffix: IconButton(icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility, color: Colors.white.withValues(alpha: 0.6)),
-                                        onPressed: () => setState(() => _obscure = !_obscure)),
-                                    validator: (v) => v == null || v.length < 6 ? 'Min 6 caractères' : null),
-                                const SizedBox(height: 24),
-                                SizedBox(width: double.infinity, height: 52,
-                                    child: ElevatedButton(
-                                      onPressed: _isLoading ? null : _login,
-                                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: AppTheme.primary, elevation: 0,
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))),
-                                      child: _isLoading
-                                          ? const SizedBox(width: 22, height: 22, child: BusLoadingIndicator(strokeWidth: 2.5, color: AppTheme.primary))
-                                          : const Text('Se connecter', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                                    )),
-                              ]),
-                            ),
+                        border: Border.all(color: context.appBorder),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: context.isDark ? 0.3 : 0.06),
+                            blurRadius: 16,
+                            offset: const Offset(0, 4),
                           ),
+                        ],
+                      ),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _AppField(
+                              controller: _emailController,
+                              label: tr.email,
+                              hint: tr.emailHint,
+                              icon: Icons.email_outlined,
+                              keyboard: TextInputType.emailAddress,
+                              action: TextInputAction.next,
+                              validator: (v) => v == null || v.trim().isEmpty ? tr.emailRequired : null,
+                            ),
+                            const SizedBox(height: 16),
+                            _AppField(
+                              controller: _passwordController,
+                              label: tr.password,
+                              hint: tr.passwordHint,
+                              icon: Icons.lock_outlined,
+                              obscure: _obscure,
+                              action: TextInputAction.done,
+                              onSubmit: (_) => _login(),
+                              suffix: IconButton(
+                                icon: Icon(
+                                  _obscure ? Icons.visibility_off : Icons.visibility,
+                                  color: context.appSub,
+                                  size: 20,
+                                ),
+                                onPressed: () => setState(() => _obscure = !_obscure),
+                              ),
+                              validator: (v) => v == null || v.length < 6 ? tr.passwordMin6 : null,
+                            ),
+                            const SizedBox(height: 24),
+                            SizedBox(
+                              height: 52,
+                              child: ElevatedButton(
+                                onPressed: _isLoading ? null : _login,
+                                child: _isLoading
+                                    ? const BusLoadingIndicator(strokeWidth: 2.5, color: Colors.white)
+                                    : Text(
+                                        tr.signIn,
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                                      ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 22),
-                      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Text('Pas de compte ? ', style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14)),
-                        GestureDetector(
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
-                          child: const Text('Créer un compte', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, decoration: TextDecoration.underline, decorationColor: Colors.white)),
+                    ),
+                    const SizedBox(height: 24),
+
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Text(tr.noAccount, style: TextStyle(color: context.appSub, fontSize: 14)),
+                      GestureDetector(
+                        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                        child: Text(
+                          tr.createAccount,
+                          style: TextStyle(color: context.appPrimary, fontSize: 14, fontWeight: FontWeight.w700),
                         ),
-                      ]),
-                      const SizedBox(height: 40),
+                      ),
                     ]),
+                        const SizedBox(height: 40),
+                    ]),
+
                   ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
-class _GlassField extends StatelessWidget {
-  final TextEditingController controller; final String label, hint; final IconData icon;
-  final TextInputType? keyboard; final TextInputAction? action; final bool obscure;
-  final Widget? suffix; final String? Function(String?)? validator; final void Function(String)? onSubmit;
-  const _GlassField({required this.controller, required this.label, required this.hint, required this.icon,
-    this.keyboard, this.action, this.obscure = false, this.suffix, this.validator, this.onSubmit});
+class _AppField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label, hint;
+  final IconData icon;
+  final TextInputType? keyboard;
+  final TextInputAction? action;
+  final bool obscure;
+  final Widget? suffix;
+  final String? Function(String?)? validator;
+  final void Function(String)? onSubmit;
+
+  const _AppField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.keyboard,
+    this.action,
+    this.obscure = false,
+    this.suffix,
+    this.validator,
+    this.onSubmit,
+  });
+
   @override
   Widget build(BuildContext context) {
     return TextFormField(
-      controller: controller, keyboardType: keyboard, textInputAction: action, obscureText: obscure,
-      onFieldSubmitted: onSubmit, style: const TextStyle(color: Colors.white), validator: validator,
+      controller: controller,
+      keyboardType: keyboard,
+      textInputAction: action,
+      obscureText: obscure,
+      onFieldSubmitted: onSubmit,
+      validator: validator,
       decoration: InputDecoration(
-        labelText: label, hintText: hint,
-        prefixIcon: Icon(icon, color: Colors.white.withValues(alpha: 0.7)), suffixIcon: suffix,
-        labelStyle: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
-        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.25))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.6), width: 2)),
-        errorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFFF6B6B))),
-        focusedErrorBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFFF6B6B), width: 2)),
-        errorStyle: const TextStyle(color: Color(0xFFFF6B6B)), // bright on gradient — intentional
-        filled: true, fillColor: Colors.white.withValues(alpha: 0.08),
+        labelText: label,
+        hintText: hint,
+        prefixIcon: Icon(icon, size: 20),
+        suffixIcon: suffix,
       ),
     );
   }

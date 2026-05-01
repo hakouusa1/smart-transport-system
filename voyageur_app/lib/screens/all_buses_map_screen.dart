@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/bus_model.dart';
 import '../services/bus_service.dart';
+import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import 'map_screen.dart';
 
@@ -434,8 +435,8 @@ class _AllBusesMapScreenState extends State<AllBusesMapScreen> with TickerProvid
               TileLayer(
                 urlTemplate: RouteService.tileUrl,
                 userAgentPackageName: 'com.example.voyageur_app',
-                tileSize: 512,
-                zoomOffset: -1,
+                tileSize: config.mapTileSize,
+                zoomOffset: config.mapZoomOffset,
               ),
 
               // ── Static route lines for each active ligne ──

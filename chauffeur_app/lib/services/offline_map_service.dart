@@ -9,7 +9,6 @@ class OfflineMapService {
   static bool _initialized = false;
   static bool _downloadComplete = false;
   static FMTCStore? _store;
-  static const String _mapboxToken = config.mapboxToken;
 
   /// Initialize the tile cache store
   static Future<void> initialize() async {
@@ -48,21 +47,21 @@ class OfflineMapService {
     // Return tile layer with caching provider
     // This automatically caches tiles as they're loaded
     return TileLayer(
-      urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}@2x?access_token=$_mapboxToken',
+      urlTemplate: config.mapTileUrl,
       userAgentPackageName: 'com.example.chauffeur_app',
       tileProvider: _store!.getTileProvider(),
-      tileSize: 512,
-      zoomOffset: -1,
+      tileSize: config.mapTileSize,
+      zoomOffset: config.mapZoomOffset,
     );
   }
 
   /// Get online-only tile layer
   static TileLayer _getOnlineTileLayer() {
     return TileLayer(
-      urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}@2x?access_token=$_mapboxToken',
+      urlTemplate: config.mapTileUrl,
       userAgentPackageName: 'com.example.chauffeur_app',
-      tileSize: 512,
-      zoomOffset: -1,
+      tileSize: config.mapTileSize,
+      zoomOffset: config.mapZoomOffset,
     );
   }
 
@@ -156,10 +155,10 @@ class OfflineMapService {
         minZoom: minZoom,
         maxZoom: maxZoom,
         options: TileLayer(
-          urlTemplate: 'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}@2x?access_token=$_mapboxToken',
+          urlTemplate: config.mapTileUrl,
           userAgentPackageName: 'com.example.chauffeur_app',
-          tileSize: 512,
-          zoomOffset: -1,
+          tileSize: config.mapTileSize,
+          zoomOffset: config.mapZoomOffset,
         ),
       );
       

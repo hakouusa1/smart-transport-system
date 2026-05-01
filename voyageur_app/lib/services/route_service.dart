@@ -35,9 +35,8 @@ class RouteResult {
 }
 
 class RouteService {
-  /// Mapbox tile URL
-  static String get tileUrl =>
-      'https://api.mapbox.com/styles/v1/mapbox/navigation-day-v1/tiles/{z}/{x}/{y}@2x?access_token=$mapboxToken';
+  /// Map tile URL
+  static String get tileUrl => config.mapTileUrl;
 
   static final Map<String, _CachedRoute> _cache = {};
 
@@ -53,12 +52,7 @@ class RouteService {
     if (hit != null && !hit.isExpired) return hit.result;
 
     try {
-      final url = Uri.parse(
-        'https://api.mapbox.com/directions/v5/mapbox/driving/'
-            '${from.longitude},${from.latitude};'
-            '${to.longitude},${to.latitude}'
-            '?overview=full&geometries=geojson&access_token=$mapboxToken',
-      );
+      final url = Uri.parse(config.getDirectionsUrl(from.longitude, from.latitude, to.longitude, to.latitude));
 
       final response = await http.get(url);
 

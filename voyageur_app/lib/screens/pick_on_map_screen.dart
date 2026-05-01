@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/bus_loading_indicator.dart';
@@ -96,8 +97,8 @@ class _PickOnMapScreenState extends State<PickOnMapScreen> {
                     TileLayer(
                       urlTemplate: RouteService.tileUrl,
                       userAgentPackageName: 'com.example.voyageur_app',
-                      tileSize: 512,
-                      zoomOffset: -1,
+                      tileSize: config.mapTileSize,
+                      zoomOffset: config.mapZoomOffset,
                     ),
                     MarkerLayer(markers: [
                       if (_myPosition != null)

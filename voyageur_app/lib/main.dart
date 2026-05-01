@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'services/notification_service.dart';
 import 'widgets/notif_listener.dart';
 import 'screens/login_screen.dart';
 import 'screens/bus_lines_screen.dart';
-
+import 'l10n/app_localizations.dart';
+import 'locale_notifier.dart';
 import 'theme/app_theme.dart';
 import 'widgets/bus_loading_indicator.dart';
 
@@ -21,6 +24,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Future.wait([
+    initializeDateFormatting('fr', null),
+    initializeDateFormatting('en', null),
+    initializeDateFormatting('ar', null),
+  ]);
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -44,13 +52,26 @@ class VoyageurApp extends StatelessWidget {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
       builder: (context, themeMode, _) {
-        return MaterialApp(
-          title: 'Voyageur',
-          debugShowCheckedModeBanner: false,
-          theme: AppTheme.light(),
-          darkTheme: AppTheme.dark(),
-          themeMode: themeMode,
-          home: const AuthWrapper(),
+        return ValueListenableBuilder<Locale>(
+          valueListenable: localeNotifier,
+          builder: (context, locale, _) {
+            return MaterialApp(
+              title: 'Voyageur',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.light(),
+              darkTheme: AppTheme.dark(),
+              themeMode: themeMode,
+              locale: locale,
+              localizationsDelegates: const [
+                AppLocalizations.delegate,
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: const AuthWrapper(),
+            );
+          },
         );
       },
     );
@@ -61,15 +82,15 @@ class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   Future<String?> _checkRole(String uid) async {
+    final tr = AppLocalizations(localeNotifier.value);
     try {
       final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      if (!doc.exists) return 'Compte non trouvé. Veuillez vous inscrire.';
+      if (!doc.exists) return tr.accountNotFound;
       final role = (doc.data() as Map<String, dynamic>)['role'] ?? '';
       if (role == 'passenger') return null;
-      final names = {'owner': 'propriétaire', 'driver': 'chauffeur'};
-      return 'Ce compte est un compte ${names[role] ?? role}.\nVeuillez utiliser l\'application correspondante.';
+      return tr.roleError(tr.roleName(role));
     } catch (_) {
-      return 'Erreur de vérification du compte.';
+      return tr.accountVerificationError;
     }
   }
 

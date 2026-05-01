@@ -1,0 +1,51 @@
+Analyzing transport_app...
+
+  error - lib/screens/dashboard_screen.dart:415:37 - The named parameter 'key' isn't defined. Try correcting the name to an existing named parameter's name, or defining a named parameter with the name 'key'. - undefined_named_parameter
+  error - lib/widgets/bus_card.dart:10:8 - Target of URI doesn't exist: 'package:cached_network_image/cached_network_image.dart'. Try creating the file referenced by the URI, or try using a URI for a file that does exist. - uri_does_not_exist
+  error - lib/widgets/bus_card.dart:225:13 - The method 'CachedNetworkImage' isn't defined for the type 'RouteThumbnail'. Try correcting the name to the name of an existing method, or defining a method named 'CachedNetworkImage'. - undefined_method
+warning - analysis_options.yaml:10:10 - Warning in the included options file /home/hako/.pub-cache/hosted/pub.dev/lints-5.1.1/lib/core.yaml(1163..1192): 'unintended_html_in_doc_comment' is not a recognized lint rule. - included_file_warning
+warning - analysis_options.yaml:10:10 - Warning in the included options file /home/hako/.pub-cache/hosted/pub.dev/lints-5.1.1/lib/recommended.yaml(1943..1966): 'unnecessary_library_name' is not a recognized lint rule. - included_file_warning
+warning - analysis_options.yaml:10:10 - Warning in the included options file /home/hako/.pub-cache/hosted/pub.dev/lints-5.1.1/lib/recommended.yaml(940..982): 'invalid_runtime_check_with_js_interop_types' is not a recognized lint rule. - included_file_warning
+warning - lib/screens/bus_service_updated.dart:5:8 - Unused import: '../theme_notifier.dart'. Try removing the import directive. - unused_import
+warning - lib/screens/buses_en_trajet_screen.dart:12:8 - Unused import: '../widgets/bus_loading_indicator.dart'. Try removing the import directive. - unused_import
+warning - lib/screens/buses_en_trajet_screen.dart:50:23 - The value of the field '_defaultCenter' isn't used. Try removing the field, or using it. - unused_field
+warning - lib/screens/dashboard_screen.dart:21:8 - Unused import: '../widgets/pulsing_dot.dart'. Try removing the import directive. - unused_import
+warning - lib/screens/dashboard_screen.dart:159:94 - The left operand can't be null, so the right operand is never executed. Try removing the operator and the right operand. - dead_null_aware_expression
+warning - lib/screens/pick_location_screen.dart:8:8 - Unused import: '../theme_notifier.dart'. Try removing the import directive. - unused_import
+warning - lib/screens/resubmit_docs_screen.dart:7:8 - Unused import: '../theme_notifier.dart'. Try removing the import directive. - unused_import
+warning - lib/widgets/bus_card.dart:4:8 - Unused import: 'package:flutter_map/flutter_map.dart'. Try removing the import directive. - unused_import
+warning - lib/widgets/bus_card.dart:7:8 - Unused import: '../app_config.dart'. Try removing the import directive. - unused_import
+warning - lib/widgets/notif_listener.dart:3:8 - Unused import: 'package:cloud_firestore/cloud_firestore.dart'. Try removing the import directive. - unused_import
+warning - lib/widgets/notif_listener.dart:7:8 - Unused import: '../theme_notifier.dart'. Try removing the import directive. - unused_import
+warning - lib/widgets/staggered_list_item.dart:50:15 - The value of the local variable 'effectiveIndex' isn't used. Try removing the variable or using it. - unused_local_variable
+   info - lib/l10n/app_localizations.dart:138:12 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/l10n/app_localizations.dart:138:18 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/l10n/app_localizations.dart:144:6 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/l10n/app_localizations.dart:150:12 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/l10n/app_localizations.dart:156:12 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/l10n/app_localizations.dart:162:12 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/l10n/app_localizations.dart:166:50 - Unnecessary braces in a string interpolation. Try removing the braces. - unnecessary_brace_in_string_interps
+   info - lib/screens/alerts_screen.dart:200:36 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:201:25 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:202:10 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:246:32 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:247:36 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:248:10 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:294:23 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:295:25 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:296:26 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/alerts_screen.dart:297:10 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/assurance_details_screen.dart:83:28 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/bus_list_screen.dart:322:11 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/bus_list_screen.dart:344:30 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/bus_list_screen.dart:346:28 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/bus_list_screen.dart:351:28 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/bus_list_screen.dart:353:26 - Don't use 'BuildContext's across async gaps. Try rewriting the code to not use the 'BuildContext', or guard the use with a 'mounted' check. - use_build_context_synchronously
+   info - lib/screens/buses_en_trajet_screen.dart:99:16 - The declaration '_buildMarkers' isn't referenced. Try removing the declaration of '_buildMarkers'. - unused_element
+   info - lib/screens/dashboard_screen.dart:65:8 - The declaration '_confirmLogout' isn't referenced. Try removing the declaration of '_confirmLogout'. - unused_element
+   info - lib/screens/dashboard_screen.dart:85:12 - The local variable '_animCard' starts with an underscore. Try renaming the variable to not start with an underscore. - no_leading_underscores_for_local_identifiers
+   info - lib/screens/dashboard_screen.dart:849:29 - Statements in a for should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/login_screen.dart:51:20 - Statements in an if should be enclosed in a block. Try wrapping the statement in a block. - curly_braces_in_flow_control_structures
+   info - lib/screens/statistics_screen.dart:422:12 - The local variable '_animCard' starts with an underscore. Try renaming the variable to not start with an underscore. - no_leading_underscores_for_local_identifiers
+
+47 issues found.
