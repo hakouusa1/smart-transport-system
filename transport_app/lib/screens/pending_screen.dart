@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/auth_service.dart';
 import '../models/subscription_plan.dart';
+import '../services/subscription_plan_service.dart';
 import 'subscription_screen.dart';
 import '../utils/transitions.dart';
 import '../theme_notifier.dart';
@@ -150,30 +151,54 @@ class _PendingApprovalScreenState extends State<PendingApprovalScreen> {
 
               // Subscription plans (unless rejected/suspended)
               if (accountStatus != 'rejected' && accountStatus != 'suspended') ...[
-                Padding(padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(children: [
-                    Text('Choisir un abonnement', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: context.appDark)),
-                    const Spacer(),
-                    if (subscription != 'none')
-                      Container(
-                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(color: context.appGreen.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(6)),
-                        child: Text('Plan actuel: ${SubscriptionPlan.getById(subscription).name}',
-                            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.appGreen)),
+                StreamBuilder<List<SubscriptionPlan>>(
+                  stream: SubscriptionPlanService.streamPlans(),
+                  builder: (_, snap) {
+                    final plans = snap.data ?? SubscriptionPlan.defaults;
+                    final currentPlanName = subscription != 'none'
+                        ? plans
+                            .where((p) =>
+                                p.id == subscription ||
+                                p.name.toLowerCase() == subscription.toLowerCase())
+                            .map((p) => p.name)
+                            .firstOrNull
+                        : null;
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(children: [
+                          Text('Choisir un abonnement',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: context.appDark)),
+                          const Spacer(),
+                          if (currentPlanName != null)
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                  color: context.appGreen.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6)),
+                              child: Text('Plan actuel: $currentPlanName',
+                                  style: TextStyle(
+                                      fontSize: 11, fontWeight: FontWeight.w600, color: context.appGreen)),
+                            ),
+                        ]),
                       ),
-                  ]),
+                      SizedBox(height: 14),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(children: [
+                          ...plans.map((plan) => Padding(
+                                padding: EdgeInsets.only(bottom: 12),
+                                child: _PlanCard(
+                                  plan: plan,
+                                  currentPlan: subscription,
+                                  onSelect: () => _selectPlan(context, plan.id),
+                                ),
+                              )),
+                        ]),
+                      ),
+                    ]);
+                  },
                 ),
-                SizedBox(height: 14),
-                Padding(padding: EdgeInsets.symmetric(horizontal: 20), child: Column(children: [
-                  ...SubscriptionPlan.plans.map((plan) => Padding(
-                    padding: EdgeInsets.only(bottom: 12),
-                    child: _PlanCard(
-                      plan: plan,
-                      currentPlan: subscription,
-                      onSelect: () => _selectPlan(context, plan.id),
-                    ),
-                  )),
-                ])),
               ],
 
               if (accountStatus == 'rejected' || accountStatus == 'suspended')

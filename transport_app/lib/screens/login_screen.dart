@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
@@ -19,6 +20,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   final _authService = AuthService();
 
   bool _isLoading = false;
+  bool _googleLoading = false;
+  bool _appleLoading = false;
   bool _obscure = true;
   late AnimationController _anim;
   late Animation<double> _fade;
@@ -48,20 +51,53 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       await _authService.signIn(email: _emailController.text, password: _passwordController.text);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(e.toString()),
-        backgroundColor: Theme.of(context).colorScheme.error,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ));
+      if (mounted) _showError(e.toString());
     } finally {
-      if (mounted) { setState(() => _isLoading = false); }
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _signInWithGoogle() async {
+    setState(() => _googleLoading = true);
+    try {
+      final user = await _authService.signInWithGoogle();
+      // null = user cancelled picker → reset loading
+      // non-null = success → keep loading; AuthWrapper will navigate to home
+      if (user == null && mounted) setState(() => _googleLoading = false);
+    } catch (e) {
+      if (mounted) {
+        _showError(e.toString());
+        setState(() => _googleLoading = false);
+      }
+    }
+  }
+
+  Future<void> _signInWithApple() async {
+    setState(() => _appleLoading = true);
+    try {
+      final user = await _authService.signInWithApple();
+      if (user == null && mounted) setState(() => _appleLoading = false);
+    } catch (e) {
+      if (mounted) {
+        _showError(e.toString());
+        setState(() => _appleLoading = false);
+      }
+    }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: Theme.of(context).colorScheme.error,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      margin: const EdgeInsets.all(16),
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final tr = AppLocalizations.of(context);
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -80,18 +116,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(height: 32),
-
-                      // Logo — transparent on app background
-                      Image.asset(
-                        'assets/images/massar_logo.webp',
-                        height: 90,
-                        fit: BoxFit.contain,
-                      ),
+                      Image.asset('assets/images/massar_logo.webp', height: 90, fit: BoxFit.contain),
                       const SizedBox(height: 10),
-                      Text(
-                        AppLocalizations.of(context).appTagline,
-                        style: TextStyle(fontSize: 13, color: context.appSub),
-                      ),
+                      Text(tr.appTagline, style: TextStyle(fontSize: 13, color: context.appSub)),
                       const SizedBox(height: 40),
 
                       // Form card
@@ -116,19 +143,18 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             children: [
                               _AppField(
                                 controller: _emailController,
-                                label: AppLocalizations.of(context).emailLabel,
+                                label: tr.emailLabel,
                                 hint: 'owner@email.com',
                                 icon: Icons.email_outlined,
                                 keyboard: TextInputType.emailAddress,
                                 action: TextInputAction.next,
                                 validator: (v) => v == null || v.trim().isEmpty
-                                    ? AppLocalizations.of(context).emailRequired
-                                    : null,
+                                    ? tr.emailRequired : null,
                               ),
                               const SizedBox(height: 16),
                               _AppField(
                                 controller: _passwordController,
-                                label: AppLocalizations.of(context).passwordLabel,
+                                label: tr.passwordLabel,
                                 hint: '••••••',
                                 icon: Icons.lock_outlined,
                                 obscure: _obscure,
@@ -137,14 +163,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 suffix: IconButton(
                                   icon: Icon(
                                     _obscure ? Icons.visibility_off : Icons.visibility,
-                                    color: context.appSub,
-                                    size: 20,
+                                    color: context.appSub, size: 20,
                                   ),
                                   onPressed: () => setState(() => _obscure = !_obscure),
                                 ),
                                 validator: (v) => v == null || v.length < 6
-                                    ? AppLocalizations.of(context).minSixChars
-                                    : null,
+                                    ? tr.minSixChars : null,
                               ),
                               const SizedBox(height: 24),
                               SizedBox(
@@ -153,37 +177,52 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   onPressed: _isLoading ? null : _login,
                                   child: _isLoading
                                       ? BusLoadingIndicator(strokeWidth: 2.5, color: Colors.white)
-                                      : Text(
-                                          AppLocalizations.of(context).signIn,
-                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-                                        ),
+                                      : Text(tr.signIn,
+                                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
+                      const SizedBox(height: 20),
+
+                      // ─── or ───
+                      _OrDivider(label: tr.orDivider),
+                      const SizedBox(height: 16),
+
+                      // Google
+                      _SocialButton(
+                        onPressed: _googleLoading ? null : _signInWithGoogle,
+                        loading: _googleLoading,
+                        label: tr.continueWithGoogle,
+                        icon: const _GoogleIcon(),
+                      ),
+                      const SizedBox(height: 10),
+
+                      // Apple (iOS / macOS only)
+                      if (Platform.isIOS || Platform.isMacOS)
+                        _SocialButton(
+                          onPressed: _appleLoading ? null : _signInWithApple,
+                          loading: _appleLoading,
+                          label: tr.continueWithApple,
+                          icon: Icon(Icons.apple, size: 22, color: context.appDark),
+                        ),
+
                       const SizedBox(height: 24),
 
                       // Register link
                       Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                        Text(
-                          '${AppLocalizations.of(context).noAccount} ',
-                          style: TextStyle(color: context.appSub, fontSize: 14),
-                        ),
+                        Text('${tr.noAccount} ',
+                            style: TextStyle(color: context.appSub, fontSize: 14)),
                         GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                          ),
-                          child: Text(
-                            AppLocalizations.of(context).createAccount,
-                            style: TextStyle(
-                              color: context.appPrimary,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
+                          onTap: () => Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const RegisterScreen())),
+                          child: Text(tr.createAccount,
+                              style: TextStyle(
+                                  color: context.appPrimary,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700)),
                         ),
                       ]),
                       const SizedBox(height: 40),
@@ -199,6 +238,84 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 }
 
+// ─── Or divider ───────────────────────────────────────────────────────────────
+class _OrDivider extends StatelessWidget {
+  final String label;
+  const _OrDivider({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Expanded(child: Divider(color: context.appBorder)),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Text(label, style: TextStyle(color: context.appSub, fontSize: 13)),
+      ),
+      Expanded(child: Divider(color: context.appBorder)),
+    ]);
+  }
+}
+
+// ─── Social button ────────────────────────────────────────────────────────────
+class _SocialButton extends StatelessWidget {
+  final VoidCallback? onPressed;
+  final bool loading;
+  final String label;
+  final Widget icon;
+
+  const _SocialButton({
+    required this.onPressed,
+    required this.loading,
+    required this.label,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          backgroundColor: context.appCardBg,
+          side: BorderSide(color: context.appBorder),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: loading
+            ? SizedBox(
+                width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: context.appPrimary),
+              )
+            : Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                icon,
+                const SizedBox(width: 10),
+                Text(label,
+                    style: TextStyle(fontSize: 15, color: context.appDark, fontWeight: FontWeight.w500)),
+              ]),
+      ),
+    );
+  }
+}
+
+// ─── Google "G" icon ──────────────────────────────────────────────────────────
+class _GoogleIcon extends StatelessWidget {
+  const _GoogleIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Text(
+      'G',
+      style: TextStyle(
+        color: Color(0xFF4285F4),
+        fontWeight: FontWeight.w700,
+        fontSize: 18,
+      ),
+    );
+  }
+}
+
+// ─── Text field ───────────────────────────────────────────────────────────────
 class _AppField extends StatelessWidget {
   final TextEditingController controller;
   final String label, hint;

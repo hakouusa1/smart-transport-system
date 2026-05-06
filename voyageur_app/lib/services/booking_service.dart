@@ -20,7 +20,7 @@ class BookingService {
     final existing = await _bookings
         .where('busId', isEqualTo: bus.busId)
         .where('passengerId', isEqualTo: _uid)
-        .where('status', whereIn: ['pending', 'confirmed'])
+        .where('status', whereIn: ['pending', 'confirmed', 'waiting', 'boarded'])
         .limit(1)
         .get();
 
@@ -53,7 +53,7 @@ class BookingService {
       passengerName: name,
       lineName: bus.lineName,
       busName: bus.busName,
-      status: 'confirmed',
+      status: 'waiting',
       passengerLat: lat,
       passengerLng: lng,
     );
@@ -61,7 +61,7 @@ class BookingService {
     // Check capacity before writing (aggregation queries cannot run inside a transaction)
     final countSnap = await _bookings
         .where('busId', isEqualTo: bus.busId)
-        .where('status', whereIn: ['pending', 'confirmed'])
+        .where('status', whereIn: ['pending', 'confirmed', 'waiting', 'boarded'])
         .count()
         .get();
     final current = countSnap.count ?? 0;
@@ -94,12 +94,51 @@ class BookingService {
     await _bookings.doc(bookingId).update({'status': 'cancelled'});
   }
 
+  /// Mark a booking as boarded
+  Future<void> markAsBoarded(String bookingId) async {
+    await _bookings.doc(bookingId).update({
+      'status': 'boarded',
+      'boardedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// Mark a booking as completed
+  Future<void> markAsCompleted(String bookingId) async {
+    await _bookings.doc(bookingId).update({'status': 'completed'});
+  }
+
+  /// Cancel all waiting bookings for a bus (used when trip ends)
+  Future<void> cancelWaitingBookingsForBus(String busId) async {
+    final snap = await _bookings
+        .where('busId', isEqualTo: busId)
+        .where('status', whereIn: ['waiting', 'pending', 'confirmed'])
+        .get();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in snap.docs) {
+      batch.update(doc.reference, {'status': 'cancelled'});
+    }
+    if (snap.docs.isNotEmpty) await batch.commit();
+  }
+
+  /// Complete all boarded bookings for a bus (used when trip ends)
+  Future<void> completeBoardedBookingsForBus(String busId) async {
+    final snap = await _bookings
+        .where('busId', isEqualTo: busId)
+        .where('status', isEqualTo: 'boarded')
+        .get();
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in snap.docs) {
+      batch.update(doc.reference, {'status': 'completed'});
+    }
+    if (snap.docs.isNotEmpty) await batch.commit();
+  }
+
   /// Get my active booking for a specific bus
   Stream<Booking?> getMyBooking(String busId) {
     return _bookings
         .where('busId', isEqualTo: busId)
         .where('passengerId', isEqualTo: _uid)
-        .where('status', whereIn: ['pending', 'confirmed'])
+        .where('status', whereIn: ['pending', 'confirmed', 'waiting', 'boarded'])
         .limit(1)
         .snapshots()
         .map((snap) {
@@ -121,7 +160,7 @@ class BookingService {
   Stream<int> getPassengerCount(String busId) {
     return _bookings
         .where('busId', isEqualTo: busId)
-        .where('status', whereIn: ['pending', 'confirmed'])
+        .where('status', whereIn: ['pending', 'confirmed', 'waiting', 'boarded'])
         .snapshots()
         .map((snap) => snap.docs.length);
   }
@@ -130,8 +169,21 @@ class BookingService {
   Stream<List<Booking>> getBusBookings(String busId) {
     return _bookings
         .where('busId', isEqualTo: busId)
-        .where('status', whereIn: ['pending', 'confirmed'])
+        .where('status', whereIn: ['pending', 'confirmed', 'waiting', 'boarded'])
         .snapshots()
         .map((snap) => snap.docs.map((d) => Booking.fromMap(d.data())).toList());
+  }
+
+  /// Get my active booking for any bus (for monitoring)
+  Stream<Booking?> getMyActiveBooking() {
+    return _bookings
+        .where('passengerId', isEqualTo: _uid)
+        .where('status', whereIn: ['pending', 'confirmed', 'waiting', 'boarded'])
+        .limit(1)
+        .snapshots()
+        .map((snap) {
+      if (snap.docs.isEmpty) return null;
+      return Booking.fromMap(snap.docs.first.data());
+    });
   }
 }

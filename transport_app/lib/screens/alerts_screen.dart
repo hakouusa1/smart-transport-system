@@ -112,10 +112,10 @@ class _AlertsScreenState extends State<AlertsScreen> {
       }
 
       if (positionKeys.isNotEmpty) {
-        DateTime nextSalary = DateTime(now.year, now.month + 1, 1);
+        DateTime nextSalary = _firstOfMonth(now, 1);
         if (bus.lastSalaryDate != null &&
             now.difference(bus.lastSalaryDate!).inDays < 20) {
-          nextSalary = DateTime(now.year, now.month + 2, 1);
+          nextSalary = _firstOfMonth(now, 2);
         }
         allItems.add(_AlertItem(
           bus: bus,
@@ -128,6 +128,13 @@ class _AlertsScreenState extends State<AlertsScreen> {
 
     allItems.sort((a, b) => a.urgencyScore.compareTo(b.urgencyScore));
     return allItems;
+  }
+
+  // Returns the 1st of the month that is [months] ahead of [base],
+  // correctly wrapping the year when month + offset > 12.
+  static DateTime _firstOfMonth(DateTime base, int months) {
+    final total = base.month - 1 + months;
+    return DateTime(base.year + total ~/ 12, total % 12 + 1, 1);
   }
 
   // ── Semantic color helpers ──

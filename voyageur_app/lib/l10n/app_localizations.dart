@@ -260,6 +260,42 @@ class AppLocalizations {
       );
   String get errGeneric =>
       _t('Erreur. Veuillez réessayer.', 'Error. Please try again.', 'خطأ. يرجى المحاولة مرة أخرى.');
+  String get errEmailNotVerified => _t(
+        'Veuillez vérifier votre email avant de vous connecter.',
+        'Please verify your email before signing in.',
+        'يرجى التحقق من بريدك الإلكتروني قبل تسجيل الدخول.',
+      );
+
+  // ═══════════════════════════════════════════════════
+  // SOCIAL SIGN-IN & EMAIL VERIFICATION
+  // ═══════════════════════════════════════════════════
+  String get continueWithGoogle =>
+      _t('Continuer avec Google', 'Continue with Google', 'المتابعة مع Google');
+  String get continueWithApple =>
+      _t('Continuer avec Apple', 'Continue with Apple', 'المتابعة مع Apple');
+  String get orDivider => _t('ou', 'or', 'أو');
+  String get verifyEmailTitle =>
+      _t('Vérifiez votre email', 'Verify your email', 'تحقق من بريدك الإلكتروني');
+  String verifyEmailBody(String email) => _t(
+        'Nous avons envoyé un lien de vérification à\n$email\n\nCliquez sur le lien pour activer votre compte.',
+        'We sent a verification link to\n$email\n\nClick the link to activate your account.',
+        'أرسلنا رابط تحقق إلى\n$email\n\nانقر على الرابط لتفعيل حسابك.',
+      );
+  String get resendEmail =>
+      _t('Renvoyer l\'email', 'Resend email', 'إعادة إرسال البريد');
+  String resendEmailCooldown(int s) =>
+      _t('Renvoyer (${s}s)', 'Resend (${s}s)', 'إعادة الإرسال ($s ث)');
+  String get verificationEmailSent =>
+      _t('Email de vérification envoyé !', 'Verification email sent!', 'تم إرسال بريد التحقق!');
+  String get emailNotYetVerified => _t(
+        'Email non encore vérifié. Vérifiez votre boîte mail.',
+        'Email not yet verified. Check your inbox.',
+        'لم يتم التحقق من البريد بعد. تحقق من صندوق الوارد.',
+      );
+  String get backToSignIn =>
+      _t('Retour à la connexion', 'Back to sign in', 'العودة لتسجيل الدخول');
+  String get checkVerification =>
+      _t('J\'ai vérifié mon email', 'I\'ve verified my email', 'لقد تحققت من بريدي');
 
   // ── Map Firebase error codes → translated messages ───────────────────────
   String authError(String code) {

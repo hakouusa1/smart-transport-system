@@ -10,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../models/bus_model.dart';
 import '../models/booking_model.dart';
 import '../services/booking_service.dart';
+import '../services/booking_foreground_service.dart';
 import '../services/location_service.dart';
 import '../services/route_service.dart';
 import '../services/price_service.dart';
@@ -80,7 +81,12 @@ class _BusLinesScreenState extends State<BusLinesScreen> {
       child: Scaffold(
         backgroundColor: context.appBg,
         body: RefreshIndicator(
-          onRefresh: () async {},
+          onRefresh: () async {
+            setState(() {
+              _linePrices = {};
+              _lastFetchedLineIds = {};
+            });
+          },
           child: CustomScrollView(
             slivers: [
               // ════════════════════════════════════════
@@ -201,7 +207,7 @@ class _BusLinesScreenState extends State<BusLinesScreen> {
                           stream: _bookingService.getMyBookings(),
                           builder: (context, bookSnap) {
                             final active = (bookSnap.data ?? [])
-                                .where((b) => b.isPending || b.isConfirmed)
+                                .where((b) => b.isPending || b.isConfirmed || b.isWaiting || b.isBoarded)
                                 .toList();
                             if (active.isEmpty) return const SizedBox.shrink();
                             return Padding(
@@ -219,7 +225,10 @@ class _BusLinesScreenState extends State<BusLinesScreen> {
                                       bookingService: _bookingService,
                                       basePrice: matchedBus != null ? _linePrices[matchedBus.lineId] : null,
                                       onViewMap: matchedBus != null
-                                          ? () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: matchedBus)))
+                                          ? () {
+                                              BookingForegroundManager.stop();
+                                              Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: matchedBus)));
+                                            }
                                           : null,
                                     ),
                                   );
@@ -266,7 +275,10 @@ class _BusLinesScreenState extends State<BusLinesScreen> {
                                 trip: trip,
                                 basePrice: _linePrices[trip.bus.lineId],
                                 isOnTrip: true,
-                                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus))),
+                                onTap: () {
+                                  BookingForegroundManager.stop();
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(bus: trip.bus)));
+                                },
                               ),
                             ),
                           )),
@@ -358,8 +370,20 @@ class _ReservedBusCard extends StatelessWidget {
     final tr = context.tr;
     final primary = context.appPrimary;
     final isDark = context.isDark;
-    final statusColor = booking.isConfirmed ? context.appGreen : context.appOrange;
-    final statusLabel = booking.isConfirmed ? tr.confirmed : tr.pending;
+    final statusColor = booking.isBoarded
+        ? context.appGreen
+        : booking.isCompleted
+            ? context.appPrimary.withValues(alpha: 0.6)
+            : booking.isConfirmed
+                ? context.appGreen
+                : context.appOrange;
+    final statusLabel = booking.isBoarded
+        ? 'À bord'
+        : booking.isCompleted
+            ? 'Terminée'
+            : booking.isConfirmed
+                ? tr.confirmed
+                : tr.pending;
 
     final parts = booking.lineName.split('-');
     final cityFrom = parts.isNotEmpty ? parts.first.trim() : '--';

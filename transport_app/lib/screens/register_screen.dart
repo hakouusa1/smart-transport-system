@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../services/auth_service.dart';
 import '../theme_notifier.dart';
 import '../widgets/bus_loading_indicator.dart';
+import 'email_verification_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -53,7 +54,17 @@ class _RegisterScreenState extends State<RegisterScreen> with SingleTickerProvid
         password: _passwordController.text,
         displayName: _nameController.text,
       );
-      if (mounted) { Navigator.pop(context); }
+      await _authService.sendVerificationEmail();
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => EmailVerificationScreen(
+              email: _emailController.text.trim(),
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

@@ -1,16 +1,27 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_database/firebase_database.dart';
 
 class LocationService {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
-  StreamSubscription<Position>? _positionSub;
+  // Single GPS source broadcast to all subscribers. Firebase writes are gated
+  // to ≥20 m movement inside startTracking(); the map display subscribes to
+  // the same stream without opening a second GPS session.
+  final StreamController<Position> _broadcastCtrl =
+      StreamController<Position>.broadcast();
+  StreamSubscription<Position>? _sourceSub;
+
   Timer? _uploadTimer;
   Position? _lastPosition;
+  Position? _lastWrittenPosition;
   bool _isTracking = false;
 
   bool get isTracking => _isTracking;
+
+  /// GPS broadcast stream. Subscribe here instead of calling Geolocator directly.
+  Stream<Position> get positionStream => _broadcastCtrl.stream;
 
   // ════════════════════════════════════════
   // PERMISSIONS
@@ -43,8 +54,7 @@ class LocationService {
     if (_isTracking) return;
     _isTracking = true;
 
-    // Write last known position immediately so passengers see the bus right away,
-    // before the 5-second upload timer fires for the first time.
+    // Write last known position immediately so passengers see the bus right away.
     final lastKnown = await Geolocator.getLastKnownPosition();
     if (lastKnown != null && _isTracking) {
       final speed = lastKnown.speed < 1.0 ? 0.0 : lastKnown.speed;
@@ -55,31 +65,60 @@ class LocationService {
         'heading': lastKnown.heading,
         'timestamp': ServerValue.timestamp,
       });
+      _lastWrittenPosition = lastKnown;
     }
 
-    // Upload on every significant position change (≥20 m) for accurate tracking.
-    // A 2-second fallback timer covers the stationary case so passengers always
-    // see a recent timestamp even when the bus isn't moving.
-    _positionSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 20,
-      ),
+    // On Android, run GPS as a foreground service so it survives screen lock.
+    // On iOS, standard settings suffice (OS allows background location).
+    final LocationSettings locationSettings = Platform.isAndroid
+        ? AndroidSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+            foregroundNotificationConfig: const ForegroundNotificationConfig(
+              notificationTitle: 'Massar Chauffeur',
+              notificationText: 'GPS actif — trajet en cours',
+              enableWakeLock: true,
+              setOngoing: true,
+            ),
+          )
+        : const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          );
+
+    _sourceSub = Geolocator.getPositionStream(
+      locationSettings: locationSettings,
     ).listen((position) {
       if (!_isTracking) return;
       _lastPosition = position;
-      double speed = position.speed < 1.0 ? 0.0 : position.speed;
-      _dbRef.child('locations/$busId').set({
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'speed': speed,
-        'heading': position.heading,
-        'timestamp': ServerValue.timestamp,
-      });
+      _broadcastCtrl.add(position);
+
+      final last = _lastWrittenPosition;
+      final movedEnough = last == null ||
+          Geolocator.distanceBetween(
+                last.latitude,
+                last.longitude,
+                position.latitude,
+                position.longitude,
+              ) >=
+              20;
+
+      if (movedEnough) {
+        _lastWrittenPosition = position;
+        final speed = position.speed < 1.0 ? 0.0 : position.speed;
+        _dbRef.child('locations/$busId').set({
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'speed': speed,
+          'heading': position.heading,
+          'timestamp': ServerValue.timestamp,
+        });
+      }
     }, onError: (_) {});
 
-    // Fallback: refresh timestamp every 2 s when stationary
-    _uploadTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    // Heartbeat: refresh timestamp every 30 s when stationary so passengers
+    // always see a recent "last seen" time even when the bus hasn't moved.
+    _uploadTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!_isTracking || _lastPosition == null) return;
       _dbRef.child('locations/$busId/timestamp').set(ServerValue.timestamp);
     });
@@ -93,24 +132,13 @@ class LocationService {
     _uploadTimer?.cancel();
     _uploadTimer = null;
     _lastPosition = null;
-    await _positionSub?.cancel();
-    _positionSub = null;
+    _lastWrittenPosition = null;
+    await _sourceSub?.cancel();
+    _sourceSub = null;
 
     try {
       await _dbRef.child('locations/$busId').remove();
     } catch (_) {}
-  }
-
-  // ════════════════════════════════════════
-  // GPS STREAM (for chauffeur map screen)
-  // ════════════════════════════════════════
-  Stream<Position> getPositionStream() {
-    return Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    );
   }
 
   // ════════════════════════════════════════
@@ -126,8 +154,9 @@ class LocationService {
   void dispose() {
     _uploadTimer?.cancel();
     _uploadTimer = null;
-    _positionSub?.cancel();
-    _positionSub = null;
+    _sourceSub?.cancel();
+    _sourceSub = null;
+    _broadcastCtrl.close();
     _isTracking = false;
   }
 }

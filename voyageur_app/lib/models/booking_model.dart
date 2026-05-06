@@ -10,6 +10,7 @@ class Booking {
   final String status;
   final double? passengerLat;
   final double? passengerLng;
+  final DateTime? boardedAt;
   final DateTime createdAt;
 
   Booking({
@@ -22,6 +23,7 @@ class Booking {
     this.status = 'pending',
     this.passengerLat,
     this.passengerLng,
+    this.boardedAt,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -36,6 +38,7 @@ class Booking {
       status: map['status'] ?? 'pending',
       passengerLat: (map['passengerLat'] as num?)?.toDouble(),
       passengerLng: (map['passengerLng'] as num?)?.toDouble(),
+      boardedAt: (map['boardedAt'] as Timestamp?)?.toDate(),
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }
@@ -51,6 +54,7 @@ class Booking {
       'status': status,
       'passengerLat': passengerLat,
       'passengerLng': passengerLng,
+      if (boardedAt != null) 'boardedAt': Timestamp.fromDate(boardedAt!),
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
@@ -58,11 +62,18 @@ class Booking {
   bool get hasLocation => passengerLat != null && passengerLng != null;
   bool get isPending => status == 'pending';
   bool get isConfirmed => status == 'confirmed';
+  bool get isWaiting => status == 'waiting';
+  bool get isBoarded => status == 'boarded';
+  bool get isCompleted => status == 'completed';
   bool get isCancelled => status == 'cancelled';
+  bool get isActive => isWaiting || isBoarded || isPending || isConfirmed;
 
   String get statusText {
     switch (status) {
       case 'confirmed': return 'Confirmée';
+      case 'waiting': return 'En attente';
+      case 'boarded': return 'À bord';
+      case 'completed': return 'Terminée';
       case 'cancelled': return 'Annulée';
       case 'pending':
       default: return 'En attente';

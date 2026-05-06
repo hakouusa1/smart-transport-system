@@ -7,6 +7,7 @@ import '../models/bus_model.dart';
 import '../services/bus_service.dart';
 import '../widgets/bus_card.dart';
 import 'add_bus_screen.dart';
+import 'resubmit_docs_screen.dart';
 import '../theme_notifier.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/staggered_list_item.dart';
@@ -92,21 +93,39 @@ class _BusListScreenState extends State<BusListScreen> with SingleTickerProvider
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: context.appDark)),
                           const Spacer(),
                           GestureDetector(
-                            onTap: () => Navigator.push(
-                                context, MaterialPageRoute(builder: (_) => const AddBusScreen())),
-                            child: Container(
-                              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: context.appPurple.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(20),
+                            onTap: () async {
+                              final limit = await _busService.getPlanLimit();
+                              if (limit != null && all.length >= limit) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                    content: Text('Vous avez atteint le nombre maximum de bus pour votre forfait.'),
+                                    backgroundColor: context.appOrange,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ));
+                                }
+                                return;
+                              }
+                              if (context.mounted) {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => const AddBusScreen()));
+                              }
+                            },
+                            child: Opacity(
+                              opacity: 1.0, // Can be reduced to 0.5 if we want it to look disabled when limit is hit, but we need limit synchronously for that.
+                              child: Container(
+                                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: context.appPurple.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(children: [
+                                  Icon(Icons.add, color: context.appPurple, size: 18),
+                                  SizedBox(width: 4),
+                                  Text('Ajouter',
+                                      style: TextStyle(
+                                          color: context.appPurple, fontSize: 13, fontWeight: FontWeight.w600)),
+                                ]),
                               ),
-                              child: Row(children: [
-                                Icon(Icons.add, color: context.appPurple, size: 18),
-                                SizedBox(width: 4),
-                                Text('Ajouter',
-                                    style: TextStyle(
-                                        color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                              ]),
                             ),
                           ),
                         ],
@@ -199,9 +218,12 @@ class _BusListScreenState extends State<BusListScreen> with SingleTickerProvider
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: buses.length,
-      itemBuilder: (_, i) => StaggeredListItem(
+      itemBuilder: (ctx, i) => StaggeredListItem(
         index: i,
-        child: _PendingCard(bus: buses[i]),
+        child: _PendingCard(
+          bus: buses[i],
+          onDelete: () => _confirmDelete(ctx, buses[i]),
+        ),
       ),
     );
   }
@@ -214,9 +236,12 @@ class _BusListScreenState extends State<BusListScreen> with SingleTickerProvider
     return ListView.builder(
       padding: EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: buses.length,
-      itemBuilder: (_, i) => StaggeredListItem(
+      itemBuilder: (ctx, i) => StaggeredListItem(
         index: i,
-        child: _RejectedCard(bus: buses[i]),
+        child: _RejectedCard(
+          bus: buses[i],
+          onDelete: () => _confirmDelete(ctx, buses[i]),
+        ),
       ),
     );
   }
@@ -266,7 +291,8 @@ class _BusListScreenState extends State<BusListScreen> with SingleTickerProvider
 // ────────────────────────────────────────────────────────────
 class _PendingCard extends StatelessWidget {
   final Bus bus;
-  const _PendingCard({required this.bus});
+  final VoidCallback onDelete;
+  const _PendingCard({required this.bus, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
@@ -312,6 +338,19 @@ class _PendingCard extends StatelessWidget {
             ),
             child: Text('En attente',
                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.appOrange)),
+          ),
+          SizedBox(width: 8),
+          GestureDetector(
+            onTap: onDelete,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: context.appRed.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.delete_outline, color: context.appRed, size: 18),
+            ),
           ),
         ]),
       ),
@@ -370,76 +409,114 @@ class _PendingCard extends StatelessWidget {
 // ────────────────────────────────────────────────────────────
 class _RejectedCard extends StatelessWidget {
   final Bus bus;
-  const _RejectedCard({required this.bus});
+  final VoidCallback onDelete;
+  const _RejectedCard({required this.bus, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
     final hasNote = bus.validationNote != null && bus.validationNote!.isNotEmpty;
 
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.appCardBg,
-        borderRadius: BorderRadius.circular(20),
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => ResubmitDocsScreen(bus: bus)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: context.appRed.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Icon(Icons.cancel_outlined, color: context.appRed, size: 22),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(
-                bus.busName.isNotEmpty ? bus.busName : 'Bus ${bus.busNumber}',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.appDark),
+      child: Container(
+        margin: EdgeInsets.only(bottom: 12),
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: context.appCardBg,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Container(
+              width: 44, height: 44,
+              decoration: BoxDecoration(
+                color: context.appRed.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(20),
               ),
-              SizedBox(height: 2),
-              Text('N° ${bus.busNumber}', style: TextStyle(fontSize: 12, color: context.appSub)),
-            ]),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: context.appRed.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
+              child: Icon(Icons.cancel_outlined, color: context.appRed, size: 22),
             ),
-            child: Text('Rejeté',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.appRed)),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(
+                  bus.busName.isNotEmpty ? bus.busName : 'Bus ${bus.busNumber}',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: context.appDark),
+                ),
+                SizedBox(height: 2),
+                Text('N° ${bus.busNumber}', style: TextStyle(fontSize: 12, color: context.appSub)),
+              ]),
+            ),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: context.appRed.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text('Rejeté',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.appRed)),
+            ),
+            SizedBox(width: 8),
+            GestureDetector(
+              onTap: onDelete,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: context.appRed.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.delete_outline, color: context.appRed, size: 18),
+              ),
+            ),
+          ]),
+
+          // Rejection reason
+          if (hasNote) ...[
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: context.appRed.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(Icons.info_outline, color: context.appRed, size: 15),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Raison du rejet',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.appRed)),
+                    SizedBox(height: 2),
+                    Text(bus.validationNote!,
+                        style: TextStyle(fontSize: 12, color: context.appRed)),
+                  ]),
+                ),
+              ]),
+            ),
+          ],
+
+          // Tap hint
+          SizedBox(height: 10),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: context.appOrange.withValues(alpha: 0.07),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: [
+              Icon(Icons.refresh_rounded, size: 14, color: context.appOrange),
+              SizedBox(width: 6),
+              Text('Corriger et resoumettre',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appOrange)),
+              Spacer(),
+              Icon(Icons.arrow_forward_ios_rounded, size: 11, color: context.appOrange),
+            ]),
           ),
         ]),
-
-        // Rejection reason
-        if (hasNote) ...[
-          SizedBox(height: 12),
-          Container(
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: context.appRed.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(Icons.info_outline, color: context.appRed, size: 15),
-              SizedBox(width: 8),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Raison du rejet',
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: context.appRed)),
-                  SizedBox(height: 2),
-                  Text(bus.validationNote!,
-                      style: TextStyle(fontSize: 12, color: context.appRed)),
-                ]),
-              ),
-            ]),
-          ),
-        ],
-      ]),
+      ),
     );
   }
 }
@@ -448,7 +525,7 @@ class _RejectedCard extends StatelessWidget {
 // PLAN LIMIT WARNING BANNER
 // ────────────────────────────────────────────────────────────
 class _PlanLimitBanner extends StatelessWidget {
-  static const _planLimits = {'starter': 3, 'pro': 10};
+  static const _fallbackPlanLimits = {'starter': 3, 'pro': 10};
   final int busCount;
   const _PlanLimitBanner({required this.busCount});
 
@@ -460,16 +537,40 @@ class _PlanLimitBanner extends StatelessWidget {
 
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
-      builder: (context, snap) {
-        if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
-        final data = snap.data!.data() as Map<String, dynamic>;
-        final plan = (data['subscription'] as String? ?? 'starter').toLowerCase();
-        final limit = _planLimits[plan];
-        // null limit = enterprise (unlimited), or no limit known
-        if (limit == null || busCount <= limit) return const SizedBox.shrink();
+      builder: (context, userSnap) {
+        if (!userSnap.hasData || !userSnap.data!.exists) return const SizedBox.shrink();
+        final data = userSnap.data!.data() as Map<String, dynamic>;
+        final planId = (data['subscription'] as String? ?? 'starter').toLowerCase();
 
-        final planName = plan[0].toUpperCase() + plan.substring(1);
-        return Padding(
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('subscription_plans')
+              .doc(planId)
+              .snapshots(),
+          builder: (context, planSnap) {
+            int? limit;
+            String planName = planId.isEmpty
+                ? 'Starter'
+                : '${planId[0].toUpperCase()}${planId.substring(1)}';
+            if (planSnap.hasData && planSnap.data!.exists) {
+              final p = planSnap.data!.data() as Map<String, dynamic>;
+              final maxBuses = (p['maxBuses'] as num?)?.toInt() ?? 0;
+              limit = maxBuses > 0 ? maxBuses : null;
+              planName = (p['name'] as String?) ?? planName;
+            } else {
+              limit = _fallbackPlanLimits[planId];
+            }
+            // null limit = unlimited, or no limit known
+            if (limit == null || busCount <= limit) return const SizedBox.shrink();
+            return _buildBanner(context, l10n, limit, planName);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBanner(BuildContext context, AppLocalizations l10n, int limit, String planName) {
+    return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           child: Container(
             padding: const EdgeInsets.all(12),
@@ -498,8 +599,6 @@ class _PlanLimitBanner extends StatelessWidget {
             ]),
           ),
         );
-      },
-    );
   }
 }
 

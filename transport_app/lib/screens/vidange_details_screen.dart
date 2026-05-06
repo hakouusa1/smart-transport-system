@@ -32,6 +32,7 @@ class _VidangeDetailsScreenState extends State<VidangeDetailsScreen> {
     try {
       await FirebaseFirestore.instance.collection('buses').doc(widget.bus.busId).update({
         'lastVidangeDate': Timestamp.now(),
+        'lastVidangeKm': widget.bus.currentKm ?? 0,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -155,4 +155,23 @@ class BusService {
       };
     });
   }
+
+  /// Get max buses allowed for the current owner's plan
+  Future<int?> getPlanLimit() async {
+    final uid = _ownerId;
+    if (uid.isEmpty) return null;
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (!userDoc.exists) return null;
+      final planId = (userDoc.data()?['subscription'] as String? ?? 'starter').toLowerCase();
+      final planDoc = await FirebaseFirestore.instance.collection('subscription_plans').doc(planId).get();
+      if (planDoc.exists) {
+        final maxBuses = (planDoc.data()?['maxBuses'] as num?)?.toInt() ?? 0;
+        if (maxBuses > 0) return maxBuses;
+      }
+      return {'starter': 3, 'pro': 10}[planId] ?? 3;
+    } catch (e) {
+      return null;
+    }
+  }
 }

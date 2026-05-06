@@ -99,8 +99,9 @@ class AuthWrapper extends StatelessWidget {
         }
 
         // Logged in → check status in Firestore
+        final user = authSnap.data!;
         return StreamBuilder<DocumentSnapshot>(
-          stream: FirebaseFirestore.instance.collection('users').doc(authSnap.data!.uid).snapshots(),
+          stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
           builder: (context, userSnap) {
             if (userSnap.connectionState == ConnectionState.waiting) {
               return const Scaffold(body: Center(child: BusLoadingIndicator()));
@@ -132,7 +133,7 @@ class AuthWrapper extends StatelessWidget {
             if (isExpired && subscriptionStatus == 'active') {
               FirebaseFirestore.instance
                   .collection('users')
-                  .doc(authSnap.data!.uid)
+                  .doc(user.uid)
                   .update({'subscriptionStatus': 'inactive'});
               return const PendingApprovalScreen();
             }

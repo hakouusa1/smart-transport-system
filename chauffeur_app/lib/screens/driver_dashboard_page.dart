@@ -56,6 +56,12 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
   bool   _follow = true;
   AnimationController? _markerAnim;
 
+  // GPS pre-warm (background fix before trip starts)
+  LatLng? _warmPos;
+  StreamSubscription<Position>? _warmUpSub;
+  bool _permissionGranted = false;
+  bool _gotFirstFix = false;
+
   // Route
   List<LatLng> _fullRoute = [], _doneRoute = [], _leftRoute = [], _preRoute = [];
   bool _preRouteLoaded = false;
@@ -91,6 +97,9 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
           _busLoaded = true;
           if (bus != null) _bus = bus;
         });
+        if (bus != null && _warmPos == null && !_tripActive) {
+          _preWarmGPS();
+        }
       }
     });
   }
@@ -101,6 +110,33 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
     if (ms != null) {
       _tripStartTime = DateTime.fromMillisecondsSinceEpoch(ms);
     }
+  }
+
+  Future<void> _preWarmGPS() async {
+    if (_tripActive) return;
+
+    _permissionGranted = await _locSvc.checkAndRequestPermissions();
+    if (!_permissionGranted || !mounted) return;
+
+    final lastKnown = await Geolocator.getLastKnownPosition();
+    if (lastKnown != null && mounted) {
+      setState(() => _warmPos = LatLng(lastKnown.latitude, lastKnown.longitude));
+    }
+
+    _warmUpSub?.cancel();
+    _warmUpSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 0,
+      ),
+    ).listen((pos) {
+      if (!mounted) return;
+      setState(() => _warmPos = LatLng(pos.latitude, pos.longitude));
+      if (pos.accuracy <= 100) {
+        _warmUpSub?.cancel();
+        _warmUpSub = null;
+      }
+    });
   }
 
   Future<void> _persistTripStart(DateTime startTime) async {
@@ -122,6 +158,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
     _etaTimer?.cancel();
     _markerAnim?.stop();
     _markerAnim = null;
+    _warmUpSub?.cancel();
     WakelockPlus.disable();
     super.dispose();
   }
@@ -133,12 +170,25 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
     if (_processing) return;
     setState(() => _processing = true);
     try {
-      await _locSvc.checkAndRequestPermissions();
+      if (!_permissionGranted) {
+        await _locSvc.checkAndRequestPermissions();
+      }
+      _warmUpSub?.cancel();
+      _warmUpSub = null;
+
+      final depLat = bus.departureLat;
+      final depLng = bus.departureLng;
+      final arrLat = bus.arrivalLat;
+      final arrLng = bus.arrivalLng;
+      if (depLat == null || depLng == null || arrLat == null || arrLng == null) {
+        throw Exception('Coordonnées de la ligne manquantes.');
+      }
+
       await _busSvc.startTrip(bus.busId);
       await _locSvc.startTracking(bus.busId);
 
-      _depLat = bus.departureLat; _depLng = bus.departureLng;
-      _arrLat = bus.arrivalLat;   _arrLng = bus.arrivalLng;
+      _depLat = depLat; _depLng = depLng;
+      _arrLat = arrLat; _arrLng = arrLng;
 
       setState(() { _tripActive = true; _processing = false; });
       _tripStartTime  = DateTime.now();
@@ -149,6 +199,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
 
       _startGPS(bus.busId);
       _loadRoute();
+      _fetchPreRoute();
       _etaTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchETA());
       WakelockPlus.enable();
 
@@ -230,30 +281,55 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
         arrivalLng:   _depLng ?? bus.arrivalLng,
       );
 
+      // Single atomic write: status + trip progression in one shot so _busSub
+      // never fires with a partial state (old coords + new status).
       try {
-        await _busSvc.endTrip(bus.busId);
-        // Apply the next-trip state locally after status update succeeds.
+        final busUpdate = <String, dynamic>{
+          'driverStatus': 'online',
+          'currentTripIndex': nextIndex,
+        };
+        if (_depLat != null && _depLng != null && _arrLat != null && _arrLng != null) {
+          busUpdate['departureLat'] = _arrLat;
+          busUpdate['departureLng'] = _arrLng;
+          busUpdate['arrivalLat']   = _depLat;
+          busUpdate['arrivalLng']   = _depLng;
+        }
+        await FirebaseFirestore.instance.collection('buses').doc(bus.busId).update(busUpdate);
+
+        // Safety net: batch-cancel waiting bookings + complete boarded bookings
+        // (Cloud Function also does this, but this covers immediate local feedback)
+        try {
+          final bookingsRef = FirebaseFirestore.instance.collection('bookings');
+          final batchOp = FirebaseFirestore.instance.batch();
+          final waitingSnap = await bookingsRef
+              .where('busId', isEqualTo: bus.busId)
+              .where('status', whereIn: ['waiting', 'pending', 'confirmed'])
+              .get();
+          for (final doc in waitingSnap.docs) {
+            batchOp.update(doc.reference, {'status': 'cancelled'});
+          }
+          final boardedSnap = await bookingsRef
+              .where('busId', isEqualTo: bus.busId)
+              .where('status', isEqualTo: 'boarded')
+              .get();
+          for (final doc in boardedSnap.docs) {
+            batchOp.update(doc.reference, {'status': 'completed'});
+          }
+          if (waitingSnap.docs.isNotEmpty || boardedSnap.docs.isNotEmpty) {
+            await batchOp.commit();
+          }
+        } catch (e) { debugPrint('Erreur mise à jour réservations: $e'); }
+
         _bus = nextBus;
         _tripsCompleted++;
         setState(() {
           _tripActive    = false; _processing = false;
           _fullRoute     = []; _doneRoute = []; _leftRoute = []; _preRoute = [];
           _preRouteLoaded = false; _tripStartTime = null; _initialDistKm = null;
+          _warmPos = null; _gotFirstFix = false;
         });
-      } catch (e) { debugPrint('Erreur mise à jour status: $e'); }
-
-      try {
-        final update = <String, dynamic>{
-          'currentTripIndex': nextIndex,
-        };
-        if (_depLat != null && _depLng != null && _arrLat != null && _arrLng != null) {
-          update['departureLat'] = _arrLat;
-          update['departureLng'] = _arrLng;
-          update['arrivalLat']   = _depLat;
-          update['arrivalLng']   = _depLng;
-        }
-        await FirebaseFirestore.instance.collection('buses').doc(bus.busId).update(update);
-      } catch (e) { debugPrint('Erreur mise à jour bus: $e'); }
+        _preWarmGPS();
+      } catch (e) { debugPrint('Erreur fin de trajet: $e'); }
 
       try {
         NotifyService.notifyOwnerTripEnded(
@@ -426,6 +502,13 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
   void _startGPS(String busId) {
     _follow = true;
 
+    if (_warmPos != null && mounted) {
+      setState(() {
+        _pos = _warmPos!;
+        _animPos = _pos;
+      });
+    }
+
     _compassSub = FlutterCompass.events?.listen((event) {
       final h = event.heading;
       if (h == null || !mounted) return;
@@ -433,11 +516,13 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
       if (_follow) _map.moveAndRotate(_adjustedCenter(_pos), _map.camera.zoom, -h);
     });
 
-    _gpsSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 10),
-    ).listen((p) {
+    _gpsSub = _locSvc.positionStream.listen((p) {
       if (!mounted || !_tripActive) return;
-      if (p.accuracy > 50) return;
+      if (!_gotFirstFix) {
+        _gotFirstFix = true;
+      } else if (p.accuracy > 50) {
+        return;
+      }
 
       double spd  = p.speed < 1.0 ? 0.0 : p.speed;
       final newPos = LatLng(p.latitude, p.longitude);
@@ -483,8 +568,9 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
   Future<void> _loadRoute({LatLng? from}) async {
     if ((_depLat == null || _depLng == null) && from == null) return;
     if (_arrLat == null || _arrLng == null) return;
-    final startLat = from?.latitude ?? _depLat!;
-    final startLng = from?.longitude ?? _depLng!;
+    final startLat = from?.latitude ?? _depLat;
+    final startLng = from?.longitude ?? _depLng;
+    if (startLat == null || startLng == null) return;
     try {
       final url = Uri.parse(config.getDirectionsUrl(startLng, startLat, _arrLng!, _arrLat!));
       final res = await http.get(url);
@@ -497,7 +583,9 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
         if (mounted && pts.isNotEmpty) setState(() { _fullRoute = pts; _leftRoute = List.from(pts); _doneRoute = []; });
       }
     } catch (_) {
-      if (mounted) _showSnack('Itinéraire indisponible. Vérifiez votre connexion.', _orange);
+      if (mounted && _fullRoute.isEmpty) {
+        _showSnack('Itinéraire indisponible. Vérifiez votre connexion.', _orange);
+      }
     } finally {
       if (from != null) _isRerouting = false;
     }
@@ -913,7 +1001,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
             stream: FirebaseFirestore.instance
                 .collection('bookings')
                 .where('busId', isEqualTo: bus.busId)
-                .where('status', whereIn: ['pending', 'confirmed']).snapshots(),
+                .where('status', whereIn: ['waiting', 'boarded', 'pending', 'confirmed']).snapshots(),
             builder: (_, snap) {
               final count = snap.data?.docs.length ?? 0;
               return Container(
@@ -1035,7 +1123,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
               child: FlutterMap(
                 mapController: _map,
                 options: MapOptions(
-                  initialCenter: _depLat != null ? LatLng(_depLat!, _depLng!) : _pos,
+                  initialCenter: (_depLat != null && _depLng != null) ? LatLng(_depLat!, _depLng!) : _pos,
                   initialZoom: 17,
                   onPointerDown: (_, __) { if (_follow) setState(() => _follow = false); },
                 ),
@@ -1061,7 +1149,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
                       Polyline(points: _leftRoute, color: context.appPrimary, strokeWidth: 7),
                     ]),
                   MarkerLayer(markers: [
-                    if (_depLat != null)
+                    if (_depLat != null && _depLng != null)
                       Marker(point: LatLng(_depLat!, _depLng!), width: 14, height: 14,
                           child: Container(decoration: BoxDecoration(
                               color: context.appGreen, shape: BoxShape.circle,
@@ -1089,7 +1177,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> with TickerPr
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('bookings')
                         .where('busId', isEqualTo: bus.busId)
-                        .where('status', whereIn: ['pending', 'confirmed']).snapshots(),
+                        .where('status', whereIn: ['waiting', 'boarded', 'pending', 'confirmed']).snapshots(),
                     builder: (_, snap) {
                       final docs    = snap.data?.docs ?? [];
                       final markers = <Marker>[];

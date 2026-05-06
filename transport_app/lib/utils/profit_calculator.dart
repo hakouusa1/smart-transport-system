@@ -69,11 +69,11 @@ abstract class ProfitCalculator {
     double baseConsumptionL100 = 35.0,
   }) {
     final chauffeurDay = chauffeurSalaryType == 'monthly'
-        ? (chauffeurSalary / 30.0) / chauffeurTripCount
+        ? (chauffeurTripCount > 0 ? (chauffeurSalary / 30.0) / chauffeurTripCount : 0.0)
         : chauffeurSalary;
 
     final receveurDay = receveurSalaryType == 'monthly' && receveurSalary > 0
-        ? (receveurSalary / 30.0) / receveurTripCount
+        ? (receveurTripCount > 0 ? (receveurSalary / 30.0) / receveurTripCount : 0.0)
         : receveurSalary;
 
     final fuel = fuelCostDAOverride ??

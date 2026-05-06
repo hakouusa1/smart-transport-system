@@ -1,18 +1,24 @@
 {
   "project_info": {
     "project_number": "761274145264",
+    "firebase_url": "https://transport-management-dac5a-default-rtdb.firebaseio.com",
     "project_id": "transport-management-dac5a",
     "storage_bucket": "transport-management-dac5a.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:761274145264:android:ec8e31160edf71b2222535",
+        "mobilesdk_app_id": "1:761274145264:android:40371a0020d64446222535",
         "android_client_info": {
-          "package_name": "com.example.transport_app"
+          "package_name": "com.example.admin_web"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
@@ -20,7 +26,135 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "761274145264-4q48nf5pp70fvr7cbvrdhagfi5umm9i7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.transportApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761274145264:android:d7e7900915e7b487222535",
+        "android_client_info": {
+          "package_name": "com.massar.driver"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "761274145264-4q48nf5pp70fvr7cbvrdhagfi5umm9i7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.transportApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761274145264:android:ec8e31160edf71b2222535",
+        "android_client_info": {
+          "package_name": "com.massar.owner"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "761274145264-q56o116og1h1hqpid3qvm4bcaqnmbccn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.massar.owner",
+            "certificate_hash": "3d1b3464e6ffd62a1ce675afacda8c8e0c721da5"
+          }
+        },
+        {
+          "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "761274145264-4q48nf5pp70fvr7cbvrdhagfi5umm9i7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.transportApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:761274145264:android:dd8f9e99f7cc8dac222535",
+        "android_client_info": {
+          "package_name": "com.massar.passenger"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPT6QkEjrd7srZ77cvWfbzD3T0kYhAP1s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "761274145264-g509h9qmgkf75290n8hvf31ra526ltua.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "761274145264-4q48nf5pp70fvr7cbvrdhagfi5umm9i7.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.transportApp"
+              }
+            }
+          ]
         }
       }
     }

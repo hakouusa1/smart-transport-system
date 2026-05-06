@@ -57,7 +57,9 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     return Scaffold(
       backgroundColor: AppColors.deepNavy,
       body: Center(child: SingleChildScrollView(child: Container(
-        width: 400, padding: const EdgeInsets.all(40),
+        constraints: const BoxConstraints(maxWidth: 400),
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: EdgeInsets.all(MediaQuery.of(context).size.width <= 600 ? 24 : 40),
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10))]),
         child: Column(mainAxisSize: MainAxisSize.min, children: [

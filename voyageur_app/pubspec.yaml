@@ -24,6 +24,10 @@ dependencies:
   firebase_messaging: ^15.1.6
   flutter_local_notifications: ^17.2.4
   shared_preferences: ^2.3.0
+  flutter_foreground_task: ^8.0.0
+  google_sign_in: ^6.2.2
+  sign_in_with_apple: ^6.1.4
+  crypto: ^3.0.5
 
 dev_dependencies:
   flutter_test:

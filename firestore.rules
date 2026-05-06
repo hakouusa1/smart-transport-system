@@ -22,7 +22,13 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && getUser(request.auth.uid).data.role == 'admin';
+      // Email check avoids a Firestore read and works even if the user doc
+      // doesn't yet have role:'admin'. The Firestore-role path remains as a
+      // fallback for any additional admin accounts created later.
+      return isSignedIn() && (
+        request.auth.token.email == 'admin@transport.com' ||
+        getUser(request.auth.uid).data.role == 'admin'
+      );
     }
 
     function isOwner(ownerId) {
@@ -68,7 +74,10 @@ service cloud.firestore {
         isAdmin() ||
         isOwner(resource.data.ownerId) ||
         (isDriver(resource.data.driverId) &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['driverStatus', 'lastLocation', 'lastLocationUpdate']))
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'driverStatus', 'lastLocation', 'lastLocationUpdate',
+           'currentTripIndex', 'departureLat', 'departureLng', 'arrivalLat', 'arrivalLng'
+         ]))
       );
 
       // Delete: admin or owner
@@ -85,14 +94,21 @@ service cloud.firestore {
     // ── Bookings ─────────────────────────────────────────────────────────────
     // Passengers can create and read their own bookings.
     // Owners can read bookings for their buses.
+    // Drivers can read bookings for their assigned bus.
     // Admins have full access.
+    // list (queries) is open to any signed-in user so that busId-filtered
+    // count queries (capacity check, passenger count widget) work without
+    // needing a passengerId filter on every query.
     match /bookings/{bookingId} {
-      allow read: if isSignedIn() && (
+      allow get: if isSignedIn() && (
         isAdmin() ||
         request.auth.uid == resource.data.passengerId ||
         isOwner(resource.data.ownerId) ||
-        isDriver(resource.data.driverId)
+        isDriver(resource.data.driverId) ||
+        (resource.data.busId is string &&
+         get(/databases/$(database)/documents/buses/$(resource.data.busId)).data.driverId == request.auth.uid)
       );
+      allow list: if isSignedIn();
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.passengerId;
       allow update: if isSignedIn() && (
         isAdmin() ||
@@ -111,6 +127,36 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ── Subscription Plans ───────────────────────────────────────────────────
+    // Readable by all authenticated users (owners, drivers, passengers).
+    // Only admins can create/update/delete plans.
+    match /subscription_plans/{planId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── Payment Requests ─────────────────────────────────────────────────────
+    // Owners can create their own requests and read their own history.
+    // Admins can read and update all requests (approve/reject).
+    // Cloud Functions write via admin SDK (bypasses rules).
+    match /payment_requests/{requestId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.ownerId
+      );
+      allow create: if isSignedIn() &&
+        request.resource.data.ownerId == request.auth.uid;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ── Config ───────────────────────────────────────────────────────────────
+    // Public read (payment account numbers, etc.), admin write only.
+    match /config/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     // ── Trips ────────────────────────────────────────────────────────────────
     // Trips are created by drivers when ending a trip; readable by involved parties.
     match /trips/{tripId} {
@@ -122,6 +168,13 @@ service cloud.firestore {
       // Drivers can create trip records; no updates or deletes from client
       allow create: if isSignedIn() && request.auth.uid == request.resource.data.driverId;
       allow update, delete: if isAdmin();
+    }
+
+    // ── Bus Creation Logs ────────────────────────────────────────────────────
+    // Owners write a log entry when creating a bus; admin reads for auditing.
+    match /bus_creation_logs/{logId} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isAdmin();
     }
 
     // ── Stats ────────────────────────────────────────────────────────────────

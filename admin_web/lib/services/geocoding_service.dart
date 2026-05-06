@@ -80,4 +80,34 @@ class GeocodingService {
 
     return GeocodeResult(lat: lat, lng: lng, resolvedName: resolvedName);
   }
+
+  static Future<List<GeocodeResult>> suggestPlaces(String query) async {
+    final trimmed = query.trim();
+    if (trimmed.length < 2 || !config.hasMapbox) return [];
+    final url = Uri.parse(
+      'https://api.mapbox.com/geocoding/v5/mapbox.places/${Uri.encodeComponent(trimmed)}.json'
+      '?access_token=${config.mapboxToken}'
+      '&country=dz'
+      '&language=fr'
+      '&limit=5',
+    );
+    try {
+      final res = await http.get(url);
+      if (res.statusCode != 200) return [];
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      final features = (body['features'] as List?) ?? [];
+      return features.map((f) {
+        final feat = f as Map<String, dynamic>;
+        final center = feat['center'] as List?;
+        if (center == null || center.length < 2) return null;
+        return GeocodeResult(
+          lat: (center[1] as num).toDouble(),
+          lng: (center[0] as num).toDouble(),
+          resolvedName: (feat['place_name'] as String?) ?? trimmed,
+        );
+      }).whereType<GeocodeResult>().toList();
+    } catch (_) {
+      return [];
+    }
+  }
 }

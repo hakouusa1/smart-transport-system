@@ -2,11 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/notify_service.dart';
 import '../services/notification_service.dart';
 
 /// Wrap your main screen with this to automatically show notifications
-/// Usage: NotificationListener(child: YourMainScreen())
 class NotifListener extends StatefulWidget {
   final Widget child;
   const NotifListener({super.key, required this.child});
@@ -17,11 +17,19 @@ class NotifListener extends StatefulWidget {
 class _NotifListenerState extends State<NotifListener> {
   StreamSubscription? _sub;
   final _seen = <String>{};
+  static const _prefsKey = 'notif_seen_ids';
 
   @override
   void initState() {
     super.initState();
     NotificationService.saveTokenNow();
+    _loadSeenAndListen();
+  }
+
+  Future<void> _loadSeenAndListen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList(_prefsKey) ?? [];
+    _seen.addAll(saved);
     _startListening();
   }
 
@@ -30,10 +38,12 @@ class _NotifListenerState extends State<NotifListener> {
     if (uid == null) return;
 
     _sub = NotifyService.listenNotifications(uid).listen(
-      (snap) {
+      (snap) async {
+        final newIds = <String>[];
         for (final doc in snap.docs) {
           if (_seen.contains(doc.id)) continue;
           _seen.add(doc.id);
+          newIds.add(doc.id);
 
           final data = doc.data() as Map<String, dynamic>;
           final title = data['title'] ?? 'Notification';
@@ -46,6 +56,12 @@ class _NotifListenerState extends State<NotifListener> {
           );
 
           NotifyService.markRead(doc.id);
+        }
+        if (newIds.isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          final updated = _seen.toList();
+          if (updated.length > 200) updated.removeRange(0, updated.length - 200);
+          await prefs.setStringList(_prefsKey, updated);
         }
       },
       onError: (e) => debugPrint('[NotifListener] stream error: $e'),

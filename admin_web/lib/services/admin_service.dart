@@ -95,12 +95,80 @@ class AdminService {
   }
 
   static Future<void> approveRenewal(String uid) async {
-    await _db.collection('users').doc(uid).update({
+    final now = Timestamp.now();
+
+    // Find the most recent pending payment request to get plan info.
+    final pendingSnap = await _db
+        .collection('payment_requests')
+        .where('ownerId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .get();
+
+    String? planId;
+    int durationDays = 30;
+
+    if (pendingSnap.docs.isNotEmpty) {
+      planId = pendingSnap.docs.first.data()['planId'] as String?;
+      if (planId != null && planId.isNotEmpty) {
+        final planDoc = await _db.collection('subscription_plans').doc(planId).get();
+        durationDays = (planDoc.data()?['durationDays'] as num?)?.toInt() ?? 30;
+      }
+    }
+
+    final expiresAt = Timestamp.fromDate(
+      DateTime.now().add(Duration(days: durationDays)),
+    );
+
+    final batch = _db.batch();
+
+    final userUpdate = <String, dynamic>{
       'subscriptionStatus': 'active',
-      'subscriptionExpiresAt': Timestamp.fromDate(
-        DateTime.now().add(const Duration(days: 30)),
-      ),
+      'subscriptionExpiresAt': expiresAt,
+    };
+    if (planId != null && planId.isNotEmpty) {
+      userUpdate['subscription'] = planId;
+    }
+    batch.update(_db.collection('users').doc(uid), userUpdate);
+
+    if (pendingSnap.docs.isNotEmpty) {
+      batch.update(pendingSnap.docs.first.reference, {
+        'status': 'approved',
+        'updatedAt': now,
+      });
+    }
+
+    await batch.commit();
+  }
+
+  static Future<void> rejectRenewal(String uid, {String reason = ''}) async {
+    final now = Timestamp.now();
+
+    final pendingSnap = await _db
+        .collection('payment_requests')
+        .where('ownerId', isEqualTo: uid)
+        .where('status', isEqualTo: 'pending')
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .get();
+
+    final batch = _db.batch();
+
+    batch.update(_db.collection('users').doc(uid), {
+      'subscriptionStatus': 'rejected',
+      'rejectionReason': reason,
     });
+
+    if (pendingSnap.docs.isNotEmpty) {
+      batch.update(pendingSnap.docs.first.reference, {
+        'status': 'rejected',
+        'rejectionReason': reason,
+        'updatedAt': now,
+      });
+    }
+
+    await batch.commit();
   }
 
   // ══════════════════════════════════════
@@ -175,6 +243,17 @@ class AdminService {
         .where('validationStatus', isEqualTo: 'approved')
         .snapshots()
         .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  static Stream<List<Map<String, dynamic>>> getRejectedBuses() {
+    return _db.collection('buses')
+        .where('validationStatus', isEqualTo: 'rejected')
+        .snapshots()
+        .map((s) => s.docs.map((d) => d.data()).toList());
+  }
+
+  static Future<void> deleteBus(String busId) async {
+    await _db.collection('buses').doc(busId).delete();
   }
 
   static Future<void> setBusValidationStatus(
@@ -262,45 +341,169 @@ class AdminService {
   }
 
   // ══════════════════════════════════════
+  // SUBSCRIPTION PLANS (OFFERS)
+  // ══════════════════════════════════════
+  static Stream<List<Map<String, dynamic>>> getSubscriptionPlans() {
+    return _db.collection('subscription_plans')
+        .orderBy('order')
+        .snapshots()
+        .map((s) => s.docs.map((d) => {'id': d.id, ...d.data()}).toList());
+  }
+
+  static Future<void> createSubscriptionPlan({
+    required String name,
+    required int priceDA,
+    required int maxBuses,
+    required int durationDays,
+    required List<String> features,
+    required String colorHex,
+    required bool recommended,
+    required int order,
+  }) async {
+    final ref = _db.collection('subscription_plans').doc();
+    await ref.set({
+      'id': ref.id,
+      'name': name,
+      'priceDA': priceDA,
+      'maxBuses': maxBuses,
+      'durationDays': durationDays,
+      'features': features,
+      'colorHex': colorHex,
+      'recommended': recommended,
+      'order': order,
+      'createdAt': Timestamp.now(),
+      'updatedAt': Timestamp.now(),
+    });
+  }
+
+  static Future<void> updateSubscriptionPlan(
+    String planId,
+    Map<String, dynamic> data,
+  ) async {
+    data['updatedAt'] = Timestamp.now();
+    await _db.collection('subscription_plans').doc(planId).update(data);
+  }
+
+  static Future<void> deleteSubscriptionPlan(String planId) async {
+    await _db.collection('subscription_plans').doc(planId).delete();
+  }
+
+  // Deterministic IDs ensure transport_app users with `subscription: 'starter'`
+  // (etc.) keep matching after seeding, and the hardcoded fallback bus limits
+  // stay aligned with the seeded plans.
+  static List<Map<String, dynamic>> get _defaultPlanDefs => [
+        {
+          'docId': 'starter',
+          'name': 'Starter', 'priceDA': 2000, 'maxBuses': 3, 'durationDays': 30, 'order': 0,
+          'features': ['Jusqu\'à 3 bus', 'Suivi GPS basique', 'Support email'],
+          'colorHex': '#1565C0', 'recommended': false,
+        },
+        {
+          'docId': 'pro',
+          'name': 'Pro', 'priceDA': 5000, 'maxBuses': 10, 'durationDays': 30, 'order': 1,
+          'features': ['Jusqu\'à 10 bus', 'Suivi GPS avancé', 'Statistiques', 'Support prioritaire'],
+          'colorHex': '#F57C00', 'recommended': true,
+        },
+        {
+          'docId': 'enterprise',
+          'name': 'Enterprise', 'priceDA': 10000, 'maxBuses': 0, 'durationDays': 30, 'order': 2,
+          'features': ['Bus illimités', 'Suivi GPS en temps réel', 'Tableau de bord avancé', 'API access', 'Support 24/7'],
+          'colorHex': '#2E7D32', 'recommended': false,
+        },
+      ];
+
+  static Future<void> forceSeedDefaultPlans() async {
+    // Atomic: delete every existing plan and write the 3 defaults in one batch.
+    // Avoids the read-after-write race that could short-circuit the seed.
+    final existing = await _db.collection('subscription_plans').get();
+    final batch = _db.batch();
+    final defaultIds = _defaultPlanDefs.map((p) => p['docId'] as String).toSet();
+    for (final d in existing.docs) {
+      if (defaultIds.contains(d.id)) continue; // will be overwritten below
+      batch.delete(d.reference);
+    }
+    final now = Timestamp.now();
+    for (final p in _defaultPlanDefs) {
+      final docId = p['docId'] as String;
+      final fields = Map<String, dynamic>.from(p)..remove('docId');
+      final ref = _db.collection('subscription_plans').doc(docId);
+      batch.set(ref, {'id': docId, ...fields, 'createdAt': now, 'updatedAt': now});
+    }
+    await batch.commit();
+  }
+
+  static Future<void> seedDefaultPlans() async {
+    final existing = await _db.collection('subscription_plans').limit(1).get();
+    if (existing.docs.isNotEmpty) return;
+    final batch = _db.batch();
+    final now = Timestamp.now();
+    for (final p in _defaultPlanDefs) {
+      final docId = p['docId'] as String;
+      final fields = Map<String, dynamic>.from(p)..remove('docId');
+      final ref = _db.collection('subscription_plans').doc(docId);
+      batch.set(ref, {'id': docId, ...fields, 'createdAt': now, 'updatedAt': now});
+    }
+    await batch.commit();
+  }
+
+  // ══════════════════════════════════════
   // SUBSCRIPTION REVENUE
   // ══════════════════════════════════════
   static Future<int> getSubscriptionRevenue({
     DateTime? from,
     DateTime? to,
   }) async {
-    final query = _db.collection('users')
+    final usersSnap = await _db.collection('users')
         .where('role', isEqualTo: 'owner')
-        .where('subscriptionStatus', isEqualTo: 'active');
+        .where('subscriptionStatus', isEqualTo: 'active')
+        .get();
+    final users = usersSnap.docs.map((d) => d.data()).toList();
 
-    final snap = await query.get();
-    final users = snap.docs.map((d) => d.data()).toList();
+    final plansSnap = await _db.collection('subscription_plans').get();
+    final priceByPlanName = <String, int>{};
+    for (final d in plansSnap.docs) {
+      final data = d.data();
+      final name = (data['name'] as String? ?? '').toLowerCase();
+      priceByPlanName[name] = (data['priceDA'] as num?)?.toInt() ?? 0;
+      priceByPlanName[d.id] = (data['priceDA'] as num?)?.toInt() ?? 0;
+    }
 
     int total = 0;
     for (final user in users) {
       final expiresAt = (user['subscriptionExpiresAt'] as Timestamp?)?.toDate();
       if (expiresAt == null) continue;
-
-      // Assume subscription started 30 days before expiry
       final startedAt = expiresAt.subtract(const Duration(days: 30));
-
-      // Filter by date range if provided
       if (from != null && startedAt.isBefore(from)) continue;
       if (to != null && startedAt.isAfter(to)) continue;
-
-      final planId = user['subscription'] ?? 'starter';
-      final priceStr = _getPlanPrice(planId);
-      final price = int.tryParse(priceStr.replaceAll(' ', '').replaceAll('DA', '')) ?? 0;
-      total += price;
+      final planKey = (user['subscription'] as String? ?? '').toLowerCase();
+      total += priceByPlanName[planKey] ?? _fallbackPlanPrice(planKey);
     }
     return total;
   }
 
-  static String _getPlanPrice(String planId) {
+  static int _fallbackPlanPrice(String planId) {
     switch (planId) {
-      case 'starter': return '2 000 DA';
-      case 'pro': return '5 000 DA';
-      case 'enterprise': return '10 000 DA';
-      default: return '2 000 DA';
+      case 'starter': return 2000;
+      case 'pro': return 5000;
+      case 'enterprise': return 10000;
+      default: return 2000;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getLatestPaymentRequest(String uid) async {
+    if (uid.isEmpty) return null;
+    try {
+      final snap = await _db
+          .collection('payment_requests')
+          .where('ownerId', isEqualTo: uid)
+          .where('status', isEqualTo: 'pending')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return {'id': snap.docs.first.id, ...snap.docs.first.data()};
+    } catch (_) {
+      return null;
     }
   }
 

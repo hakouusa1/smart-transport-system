@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/auth_service.dart';
 import '../models/subscription_plan.dart';
-import '../services/alert_notification_service.dart';
+import '../services/subscription_plan_service.dart';
 import '../theme_notifier.dart';
 import '../locale_notifier.dart';
 import '../l10n/app_localizations.dart';
@@ -447,7 +447,6 @@ class _ProfileScreenState extends State<ProfileScreen>
             final subscription = data['subscription'] ?? 'starter';
             final expiresAt = data['subscriptionExpiresAt'] as Timestamp?;
 
-            final planName = SubscriptionPlan.getById(subscription).name;
             String expirationStr = '—';
             String remainingStr = '—';
             bool isRemainingExpired = false;
@@ -642,11 +641,15 @@ class _ProfileScreenState extends State<ProfileScreen>
                               onEdit: null,
                             ),
                             _Divider(),
-                            _ProfileTile(
-                              icon: Icons.workspace_premium_outlined,
-                              label: l10n.currentPlan,
-                              value: planName,
-                              onEdit: null,
+                            FutureBuilder<SubscriptionPlan>(
+                              future: SubscriptionPlanService.fetchById(subscription),
+                              initialData: SubscriptionPlan.defaults.first,
+                              builder: (_, snap) => _ProfileTile(
+                                icon: Icons.workspace_premium_outlined,
+                                label: l10n.currentPlan,
+                                value: snap.data?.name ?? subscription,
+                                onEdit: null,
+                              ),
                             ),
                             _Divider(),
                             _ProfileTile(
@@ -869,28 +872,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                                 },
                               ),
                             ],
-                            _Divider(),
-                            _ActionTile(
-                              icon: Icons.notifications_active_outlined,
-                              label: l10n.testAlertNotifs,
-                              iconColor: context.appOrange,
-                              onTap: () async {
-                                final messenger = ScaffoldMessenger.of(context);
-                                final orange = context.appOrange;
-                                final sent = l10n.notificationsSent;
-                                await AlertNotificationService.testAll();
-                                if (!mounted) return;
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: Text(sent),
-                                    behavior: SnackBarBehavior.floating,
-                                    shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12)),
-                                    backgroundColor: orange,
-                                  ),
-                                );
-                              },
-                            ),
                             _Divider(),
                             _ActionTile(
                               icon: Icons.logout_rounded,

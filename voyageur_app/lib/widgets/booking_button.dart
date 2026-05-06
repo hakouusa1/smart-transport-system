@@ -119,22 +119,27 @@ class _BookingButtonState extends State<BookingButton> {
 
         // Already booked — show status + cancel
         if (booking != null) {
+          final isBoarded = booking.isBoarded;
+          final statusColor = isBoarded ? context.appGreen : context.appOrange;
+          final statusIcon = isBoarded ? Icons.directions_bus : Icons.hourglass_top;
+          final statusText = isBoarded ? 'À bord' : 'En attente';
+
           return Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: context.appGreen.withValues(alpha: 0.08),
+              color: statusColor.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: context.appGreen.withValues(alpha: 0.2)),
+              border: Border.all(color: statusColor.withValues(alpha: 0.2)),
             ),
             child: Row(children: [
-              Icon(Icons.check_circle, color: context.appGreen, size: 18),
+              Icon(statusIcon, color: statusColor, size: 18),
               const SizedBox(width: 8),
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Réservation confirmée',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: context.appGreen)),
+                  Text(statusText,
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: statusColor)),
                   Text(widget.bus.lineName,
                       style: TextStyle(fontSize: 10, color: context.appSub)),
                 ],

@@ -11,7 +11,7 @@
         <!-- Tell FCM which channel to use for background/killed-app messages -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="transport_alerts"/>
+            android:value="bus_channel"/>
 
         <activity
             android:name=".MainActivity"

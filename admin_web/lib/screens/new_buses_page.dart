@@ -8,28 +8,85 @@ class NewBusesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+    final pad = isMobile ? 16.0 : 28.0;
+
     return Column(children: [
       Container(
-        padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
+        padding: EdgeInsets.fromLTRB(pad, pad, pad, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('✨ New Buses',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.dark)),
+          Text('✨ New Buses',
+              style: TextStyle(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.w700, color: AppColors.dark)),
           const SizedBox(height: 6),
           const Text('Validez les nouvelles demandes de bus.',
               style: TextStyle(color: AppColors.sub, fontSize: 13)),
         ]),
       ),
-      Expanded(child: _BusList(stream: AdminService.getPendingBuses())),
+      Expanded(
+        child: ListView(
+          padding: EdgeInsets.all(pad),
+          children: [
+            _SectionLabel(
+              icon: Icons.hourglass_top_rounded,
+              color: AppColors.orange,
+              title: 'En attente de validation',
+            ),
+            const SizedBox(height: 12),
+            _BusSectionStream(
+              stream: AdminService.getPendingBuses(),
+              emptyLabel: 'Aucun bus en attente de validation',
+            ),
+            const SizedBox(height: 28),
+            _SectionLabel(
+              icon: Icons.cancel_rounded,
+              color: AppColors.red,
+              title: 'Bus rejetés',
+            ),
+            const SizedBox(height: 12),
+            _BusSectionStream(
+              stream: AdminService.getRejectedBuses(),
+              emptyLabel: 'Aucun bus rejeté',
+            ),
+          ],
+        ),
+      ),
     ]);
   }
 }
 
 // ─────────────────────────────────────────────
-// BUS LIST
+// SECTION LABEL
 // ─────────────────────────────────────────────
-class _BusList extends StatelessWidget {
+class _SectionLabel extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  const _SectionLabel({required this.icon, required this.color, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      Container(
+        width: 34, height: 34,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 18),
+      ),
+      const SizedBox(width: 12),
+      Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.dark)),
+    ]);
+  }
+}
+
+// ─────────────────────────────────────────────
+// BUS SECTION STREAM
+// ─────────────────────────────────────────────
+class _BusSectionStream extends StatelessWidget {
   final Stream<List<Map<String, dynamic>>> stream;
-  const _BusList({required this.stream});
+  final String emptyLabel;
+  const _BusSectionStream({required this.stream, required this.emptyLabel});
 
   @override
   Widget build(BuildContext context) {
@@ -38,32 +95,36 @@ class _BusList extends StatelessWidget {
       builder: (_, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(
-              child: CircularProgressIndicator(color: AppColors.navy, strokeWidth: 2.5));
+            child: Padding(
+              padding: EdgeInsets.all(16),
+              child: CircularProgressIndicator(color: AppColors.navy, strokeWidth: 2.5),
+            ),
+          );
         }
         if (snap.hasError) {
-          return Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Icon(Icons.error_outline, size: 48, color: AppColors.red),
-              const SizedBox(height: 12),
-              Text('Erreur de chargement: ${snap.error}',
-                  style: const TextStyle(color: AppColors.red), textAlign: TextAlign.center),
-            ]),
+          return Padding(
+            padding: const EdgeInsets.all(8),
+            child: Text('Erreur: ${snap.error}',
+                style: const TextStyle(color: AppColors.red, fontSize: 13)),
           );
         }
         final buses = snap.data ?? [];
         if (buses.isEmpty) {
-          return const Center(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.directions_bus_outlined, size: 48, color: AppColors.border),
-              SizedBox(height: 12),
-              Text('Aucun bus en attente de validation', style: TextStyle(color: AppColors.sub)),
-            ]),
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Center(
+              child: Text(emptyLabel,
+                  style: const TextStyle(color: AppColors.sub, fontSize: 13)),
+            ),
           );
         }
-        return ListView.builder(
-          padding: const EdgeInsets.all(28),
-          itemCount: buses.length,
-          itemBuilder: (_, i) => _BusCard(bus: buses[i]),
+        return Column(
+          children: buses.map((b) => _BusCard(bus: b)).toList(),
         );
       },
     );
@@ -77,10 +138,63 @@ class _BusCard extends StatelessWidget {
   final Map<String, dynamic> bus;
   const _BusCard({required this.bus});
 
+  void _openDetail(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => _BusDetailDialog(bus: bus),
+    );
+  }
+
+  void _confirmDelete(BuildContext context) {
+    final name = '${bus['busName'] ?? ''} ${bus['busNumber'] ?? ''}'.trim();
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Supprimer le bus ?',
+            style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.dark)),
+        content: Text(
+          'Voulez-vous vraiment supprimer "${name.isEmpty ? 'ce bus' : name}" ?\nCette action est irréversible.',
+          style: const TextStyle(fontSize: 13, color: AppColors.sub),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await AdminService.deleteBus(bus['busId'] as String);
+                messenger?.showSnackBar(const SnackBar(
+                  content: Text('Bus supprimé avec succès.'),
+                  backgroundColor: AppColors.red,
+                  behavior: SnackBarBehavior.floating,
+                ));
+              } catch (e) {
+                messenger?.showSnackBar(SnackBar(
+                  content: Text('Erreur : $e'),
+                  backgroundColor: AppColors.red,
+                  behavior: SnackBarBehavior.floating,
+                ));
+              }
+            },
+            style: FilledButton.styleFrom(backgroundColor: AppColors.red),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     final driverStatus = bus['driverStatus'] ?? 'offline';
     final validationStatus = bus['validationStatus'] ?? 'pending';
+    final isPending = validationStatus == 'pending';
 
     final driverStatusColor = driverStatus == 'on_trip'
         ? AppColors.green
@@ -96,57 +210,136 @@ class _BusCard extends StatelessWidget {
         ? 'Approuvé'
         : validationStatus == 'rejected' ? 'Rejeté' : 'En attente';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
+    return InkWell(
+      onTap: () => _openDetail(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: EdgeInsets.all(isMobile ? 14 : 16),
+        decoration: BoxDecoration(
           color: AppColors.card,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border)),
-      child: Row(children: [
-        Container(
-          width: 40, height: 40,
-          decoration: BoxDecoration(
-              color: AppColors.navy.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10)),
-          child: const Icon(Icons.directions_bus, color: AppColors.navy, size: 20),
+          border: Border.all(color: AppColors.border),
         ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(bus['lineName'] ?? '--',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark)),
-            Text('${bus['busName'] ?? ''}  ${bus['busNumber'] ?? ''}',
-                style: const TextStyle(fontSize: 12, color: AppColors.sub)),
-          ]),
-        ),
-        _badge(validationText, validationColor),
-        const SizedBox(width: 8),
-        _badge(driverStatusText, driverStatusColor),
-        const SizedBox(width: 12),
-        FilledButton.icon(
-          onPressed: () => showDialog(
-            context: context,
-            builder: (ctx) => _BusDetailDialog(bus: bus),
-          ),
-          icon: const Icon(Icons.fact_check_outlined, size: 16),
-          label: const Text('Vérifier'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.navy,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
-        ),
-      ]),
+        child: isMobile
+          ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.navy.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.directions_bus, color: AppColors.navy, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(bus['lineName'] ?? '--',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                    Text('${bus['busName'] ?? ''}  ${bus['busNumber'] ?? ''}',
+                        style: const TextStyle(fontSize: 11, color: AppColors.sub)),
+                  ]),
+                ),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                _badge(validationText, validationColor),
+                const SizedBox(width: 6),
+                _badge(driverStatusText, driverStatusColor),
+              ]),
+              const SizedBox(height: 10),
+              Row(children: [
+                if (isPending)
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _openDetail(context),
+                      icon: const Icon(Icons.fact_check_outlined, size: 16),
+                      label: const Text('Vérifier'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.navy,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _openDetail(context),
+                      icon: const Icon(Icons.visibility_outlined, size: 16, color: AppColors.navy),
+                      label: const Text('Voir détails', style: TextStyle(color: AppColors.navy)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.navy.withValues(alpha: 0.1),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () => _confirmDelete(context),
+                  icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 22),
+                  tooltip: 'Supprimer le bus',
+                ),
+              ]),
+            ])
+          : Row(children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.navy.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.directions_bus, color: AppColors.navy, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(bus['lineName'] ?? '--',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                  Text('${bus['busName'] ?? ''}  ${bus['busNumber'] ?? ''}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.sub)),
+                ]),
+              ),
+              _badge(validationText, validationColor),
+              const SizedBox(width: 8),
+              _badge(driverStatusText, driverStatusColor),
+              const SizedBox(width: 12),
+              if (isPending)
+                FilledButton.icon(
+                  onPressed: () => _openDetail(context),
+                  icon: const Icon(Icons.fact_check_outlined, size: 16),
+                  label: const Text('Vérifier'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.navy,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                )
+              else
+                IconButton(
+                  onPressed: () => _openDetail(context),
+                  icon: const Icon(Icons.visibility_outlined, color: AppColors.navy, size: 22),
+                  tooltip: 'Voir détails',
+                ),
+              IconButton(
+                onPressed: () => _confirmDelete(context),
+                icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 22),
+                tooltip: 'Supprimer le bus',
+              ),
+            ]),
+      ),
     );
   }
 
   Widget _badge(String text, Color color) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
     decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        color: color.withValues(alpha: 0.1),
-        border: Border.all(color: color.withValues(alpha: 0.3))),
+      borderRadius: BorderRadius.circular(6),
+      color: color.withValues(alpha: 0.1),
+      border: Border.all(color: color.withValues(alpha: 0.3)),
+    ),
     child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
   );
 }
@@ -307,10 +500,12 @@ class _BusDetailDialogState extends State<_BusDetailDialog> {
     final Color saveColor = _hasIssue ? AppColors.red : AppColors.green;
     final String saveLabel = _hasIssue ? 'Sauvegarder · Rejeter le bus' : 'Sauvegarder · Approuver le bus';
 
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     return Dialog(
+      insetPadding: isMobile ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 900),
+        constraints: BoxConstraints(maxWidth: 720, maxHeight: isMobile ? MediaQuery.of(context).size.height * 0.9 : 900),
         child: Column(children: [
 
           // ── Fixed header ──
@@ -341,19 +536,36 @@ class _BusDetailDialogState extends State<_BusDetailDialog> {
                 // ── Documents ──
                 _sectionLabel(Icons.folder_open, 'Documents'),
                 const SizedBox(height: 12),
-                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Expanded(child: _docSection(
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: isMobile
+                  ? [
+                      // Handled below
+                    ]
+                  : [
+                      Expanded(child: _docSection(
+                        label: 'Validation de ligne', url: ligneUrl,
+                        status: _ligneStatus, noteCtrl: _ligneNoteCtrl,
+                        onStatus: (s) => setState(() => _ligneStatus = s),
+                      )),
+                      const SizedBox(width: 16),
+                      Expanded(child: _docSection(
+                        label: 'Assurance', url: assuranceUrl,
+                        status: _assuranceStatus, noteCtrl: _assuranceNoteCtrl,
+                        onStatus: (s) => setState(() => _assuranceStatus = s),
+                      )),
+                    ]),
+                if (isMobile) ...[
+                  _docSection(
                     label: 'Validation de ligne', url: ligneUrl,
                     status: _ligneStatus, noteCtrl: _ligneNoteCtrl,
                     onStatus: (s) => setState(() => _ligneStatus = s),
-                  )),
-                  const SizedBox(width: 16),
-                  Expanded(child: _docSection(
+                  ),
+                  const SizedBox(height: 16),
+                  _docSection(
                     label: 'Assurance', url: assuranceUrl,
                     status: _assuranceStatus, noteCtrl: _assuranceNoteCtrl,
                     onStatus: (s) => setState(() => _assuranceStatus = s),
-                  )),
-                ]),
+                  ),
+                ],
 
                 const Divider(height: 28),
 

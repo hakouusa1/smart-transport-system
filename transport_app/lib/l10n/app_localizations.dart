@@ -71,6 +71,35 @@ class AppLocalizations {
       _t('Les mots de passe ne correspondent pas', 'Passwords do not match', 'كلمتا المرور غير متطابقتين');
   String get registerButton => _t('S\'inscrire', 'Register', 'إنشاء الحساب');
 
+  // ── Social sign-in & email verification ─────────────────────────────────
+  String get continueWithGoogle =>
+      _t('Continuer avec Google', 'Continue with Google', 'المتابعة مع Google');
+  String get continueWithApple =>
+      _t('Continuer avec Apple', 'Continue with Apple', 'المتابعة مع Apple');
+  String get orDivider => _t('ou', 'or', 'أو');
+  String get verifyEmailTitle =>
+      _t('Vérifiez votre email', 'Verify your email', 'تحقق من بريدك الإلكتروني');
+  String verifyEmailBody(String email) => _t(
+        'Nous avons envoyé un lien de vérification à\n$email\n\nCliquez sur le lien pour activer votre compte.',
+        'We sent a verification link to\n$email\n\nClick the link to activate your account.',
+        'أرسلنا رابط تحقق إلى\n$email\n\nانقر على الرابط لتفعيل حسابك.',
+      );
+  String get resendEmail =>
+      _t('Renvoyer l\'email', 'Resend email', 'إعادة إرسال البريد');
+  String resendEmailCooldown(int s) =>
+      _t('Renvoyer (${s}s)', 'Resend (${s}s)', 'إعادة الإرسال ($s ث)');
+  String get verificationEmailSent =>
+      _t('Email de vérification envoyé !', 'Verification email sent!', 'تم إرسال بريد التحقق!');
+  String get emailNotYetVerified => _t(
+        'Email non encore vérifié. Vérifiez votre boîte mail.',
+        'Email not yet verified. Check your inbox.',
+        'لم يتم التحقق من البريد بعد. تحقق من صندوق الوارد.',
+      );
+  String get backToSignIn =>
+      _t('Retour à la connexion', 'Back to sign in', 'العودة لتسجيل الدخول');
+  String get checkVerification =>
+      _t('J\'ai vérifié mon email', 'I\'ve verified my email', 'لقد تحققت من بريدي');
+
   // ── Dashboard ────────────────────────────────────────────────────────────
    String get manageFleetTagline =>
        _t('Gérez votre flotte en toute simplicité', 'Manage your fleet with ease', 'إدارة أسطولك بكل سهولة');
@@ -660,6 +689,12 @@ class AppLocalizations {
     'Your payment is being verified.\nThis may take 1 to 3 days.',
     'جارٍ التحقق من دفعتك.\nقد يستغرق ذلك من 1 إلى 3 أيام.',
   );
+  String get pendingVerificationChangePlanBody => _t(
+    'Votre demande de changement de plan est en cours de vérification.\nVous pouvez continuer à utiliser votre plan actuel en attendant.\nL\'administrateur approuvera votre abonnement dans 1 à 3 jours.',
+    'Your plan change request is being verified.\nYou can continue using your current plan in the meantime.\nThe admin will approve your subscription within 1 to 3 days.',
+    'جارٍ التحقق من طلب تغيير خطتك.\nيمكنك الاستمرار في استخدام خطتك الحالية في هذه الأثناء.\nسيوافق المسؤول على اشتراكك خلال 1 إلى 3 أيام.',
+  );
+  String get goToHome => _t('Retour à l\'accueil', 'Go to home', 'العودة للرئيسية');
   String get checkStatusButton =>
       _t('Vérifier le statut', 'Check status', 'التحقق من الحالة');
   String get paymentRejectedTitle =>
@@ -864,6 +899,53 @@ class AppLocalizations {
       _t('Paramètre mis à jour', 'Setting updated', 'تم تحديث الإعداد');
   String get editSettingTitle =>
       _t('Modifier', 'Edit', 'تعديل');
+
+  // ── Plan bus-limit warning (before selecting a plan) ─────────────────────
+  String get planBusLimitWarningTitle => _t(
+    'Limite de bus dépassée',
+    'Bus limit exceeded',
+    'تجاوز حد الحافلات',
+  );
+  String planBusLimitWarningBody(int current, int max, int excess) => _t(
+    'Vous avez $current bus, mais ce plan n\'en autorise que $max. '
+    'Vous devrez supprimer $excess bus${excess > 1 ? '' : ''} pour accéder à l\'application.',
+    'You have $current buses, but this plan only allows $max. '
+    'You will need to delete ${excess > 1 ? '$excess buses' : '1 bus'} to access the app.',
+    'لديك $current حافلة، لكن هذه الخطة تسمح بـ $max فقط. '
+    'ستحتاج إلى حذف $excess حافلة للمتابعة.',
+  );
+  String get continueAnyway => _t(
+    'Continuer quand même',
+    'Continue anyway',
+    'المتابعة على أي حال',
+  );
+
+  // ── Reduce buses screen ───────────────────────────────────────────────────
+  String reduceBusesTitle(String planName, int limit) => _t(
+    'Plan $planName — max $limit bus',
+    '$planName plan — max $limit ${limit > 1 ? 'buses' : 'bus'}',
+    'خطة $planName — الحد الأقصى $limit حافلة',
+  );
+  String reduceBusesSubtitle(int excess) => _t(
+    'Supprimez $excess bus${excess > 1 ? '' : ''} pour accéder à l\'application.',
+    'Delete ${excess > 1 ? '$excess buses' : '1 bus'} to access the app.',
+    'احذف $excess حافلة للوصول إلى التطبيق.',
+  );
+  String get reduceBusesCompleted => _t(
+    'Flotte conforme — vous pouvez continuer !',
+    'Fleet compliant — you can continue!',
+    'الأسطول ممتثل — يمكنك المتابعة!',
+  );
+  String get continueToApp => _t(
+    "Accéder à l'application",
+    'Continue to app',
+    'الدخول إلى التطبيق',
+  );
+  String busesToRemoveFmt(int n) => _t(
+    '$n bus à supprimer',
+    n == 1 ? '1 bus to remove' : '$n buses to remove',
+    '$n حافلة للحذف',
+  );
 }
 
 class _AppLocalizationsDelegate

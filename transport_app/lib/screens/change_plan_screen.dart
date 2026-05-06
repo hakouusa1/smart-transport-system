@@ -1,14 +1,138 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../models/bus_model.dart';
 import '../models/subscription_plan.dart';
+import '../services/bus_service.dart';
+import '../services/subscription_plan_service.dart';
 import '../theme_notifier.dart';
 import '../l10n/app_localizations.dart';
 import '../utils/transitions.dart';
 import 'subscription_screen.dart';
 
-class ChangePlanScreen extends StatelessWidget {
+class ChangePlanScreen extends StatefulWidget {
   final String currentPlanId;
   const ChangePlanScreen({super.key, required this.currentPlanId});
+
+  @override
+  State<ChangePlanScreen> createState() => _ChangePlanScreenState();
+}
+
+class _ChangePlanScreenState extends State<ChangePlanScreen> {
+  int _busCount = 0;
+  StreamSubscription<List<Bus>>? _busSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _busCount = BusService().latestBuses?.length ?? 0;
+    _busSub = BusService().getBuses().listen((buses) {
+      if (mounted) setState(() => _busCount = buses.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _busSub?.cancel();
+    super.dispose();
+  }
+
+  void _onPlanSelected(SubscriptionPlan plan) {
+    final l10n = AppLocalizations.of(context);
+    if (plan.maxBuses > 0 && _busCount > plan.maxBuses) {
+      final excess = _busCount - plan.maxBuses;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          backgroundColor: context.appCardBg,
+          title: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: context.appOrange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.warning_amber_rounded,
+                    color: context.appOrange, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  l10n.planBusLimitWarningTitle,
+                  style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: context.appDark),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            l10n.planBusLimitWarningBody(_busCount, plan.maxBuses, excess),
+            style:
+                TextStyle(fontSize: 13, color: context.appText, height: 1.5),
+          ),
+          actionsPadding:
+              const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            Row(children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: BorderSide(color: context.appBorder),
+                    ),
+                  ),
+                  child: Text(l10n.cancel,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: context.appSub)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _navigateToSubscription(plan);
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: context.appOrange,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: Text(l10n.continueAnyway,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ]),
+          ],
+        ),
+      );
+    } else {
+      _navigateToSubscription(plan);
+    }
+  }
+
+  void _navigateToSubscription(SubscriptionPlan plan) {
+    Navigator.push(
+      context,
+      AppTransitions.slideRight(
+        page: SubscriptionScreen(
+          initialPlanId: plan.id,
+          initialStatus: 'not_subscribed',
+          isChangingPlan: true,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,20 +253,25 @@ class ChangePlanScreen extends StatelessWidget {
                     const SizedBox(height: 20),
 
                     // Plan cards
-                    ...SubscriptionPlan.plans.map((plan) => _PlanCard(
-                          plan: plan,
-                          isCurrent: plan.id == currentPlanId,
-                          onSelect: () => Navigator.push(
-                            context,
-                            AppTransitions.slideRight(
-                              page: SubscriptionScreen(
-                                initialPlanId: plan.id,
-                                initialStatus: 'not_subscribed',
-                                isChangingPlan: true,
-                              ),
-                            ),
-                          ),
-                        )),
+                    StreamBuilder<List<SubscriptionPlan>>(
+                      stream: SubscriptionPlanService.streamPlans(),
+                      builder: (_, snap) {
+                        final plans =
+                            snap.data ?? SubscriptionPlan.defaults;
+                        return Column(
+                          children: plans
+                              .map((plan) => _PlanCard(
+                                    plan: plan,
+                                    isCurrent:
+                                        plan.id == widget.currentPlanId,
+                                    busCount: _busCount,
+                                    onSelect: () =>
+                                        _onPlanSelected(plan),
+                                  ))
+                              .toList(),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -157,17 +286,20 @@ class ChangePlanScreen extends StatelessWidget {
 class _PlanCard extends StatelessWidget {
   final SubscriptionPlan plan;
   final bool isCurrent;
+  final int busCount;
   final VoidCallback onSelect;
 
   const _PlanCard({
     required this.plan,
     required this.isCurrent,
+    required this.busCount,
     required this.onSelect,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final willExceedLimit = plan.maxBuses > 0 && busCount > plan.maxBuses;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -221,7 +353,7 @@ class _PlanCard extends StatelessWidget {
                             color: context.appDark),
                       ),
                       Text(
-                        '${plan.price} ${l10n.perMonth}',
+                        '${plan.price} / ${plan.durationDays} j',
                         style: TextStyle(
                             fontSize: 13,
                             color: plan.color,
@@ -256,6 +388,39 @@ class _PlanCard extends StatelessWidget {
                     ],
                   ),
                 )),
+
+            // Excess-bus warning chip (shown when this plan is under current count)
+            if (!isCurrent && willExceedLimit) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: context.appOrange.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: context.appOrange.withValues(alpha: 0.3)),
+                ),
+                child: Row(children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: context.appOrange, size: 15),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      l10n.planBusLimitWarningBody(
+                          busCount,
+                          plan.maxBuses,
+                          busCount - plan.maxBuses),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: context.appOrange,
+                          height: 1.4),
+                    ),
+                  ),
+                ]),
+              ),
+            ],
 
             const SizedBox(height: 16),
 

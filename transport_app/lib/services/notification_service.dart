@@ -9,8 +9,8 @@ class NotificationService {
   static final _local = FlutterLocalNotificationsPlugin();
   static bool _initialized = false;
 
-  static const _channelId   = 'transport_alerts';
-  static const _channelName = 'Alertes Transport';
+  static const _channelId   = 'bus_channel';
+  static const _channelName = 'Notifications Bus';
   static const _channelDesc = 'Alertes assurance, vidange et maintenance';
 
   static Future<void> init() async {

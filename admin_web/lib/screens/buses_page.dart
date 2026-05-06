@@ -29,16 +29,19 @@ class _BusesPageState extends State<BusesPage> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+    final pad = isMobile ? 16.0 : 28.0;
+
     return Column(children: [
       Container(
-        padding: const EdgeInsets.fromLTRB(28, 28, 28, 0),
+        padding: EdgeInsets.fromLTRB(pad, pad, pad, 0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Gestion des bus',
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.dark)),
+          Text('Gestion des bus',
+              style: TextStyle(fontSize: isMobile ? 20 : 26, fontWeight: FontWeight.w700, color: AppColors.dark)),
           const SizedBox(height: 6),
           const Text('Validez les bus en attente et consultez tous les bus.',
               style: TextStyle(color: AppColors.sub, fontSize: 13)),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
           TabBar(
             controller: _tabs,
             labelColor: AppColors.navy,
@@ -69,6 +72,9 @@ class _BusList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+    final pad = isMobile ? 16.0 : 28.0;
+
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: stream,
       builder: (_, snap) {
@@ -100,7 +106,7 @@ class _BusList extends StatelessWidget {
           );
         }
         return ListView.builder(
-          padding: const EdgeInsets.all(28),
+          padding: EdgeInsets.all(pad),
           itemCount: buses.length,
           itemBuilder: (_, i) => _BusCard(bus: buses[i]),
         );
@@ -118,6 +124,7 @@ class _BusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     final driverStatus = bus['driverStatus'] ?? 'offline';
     final validationStatus = bus['validationStatus'] ?? 'approved';
 
@@ -150,32 +157,57 @@ class _BusCard extends StatelessWidget {
       ),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(isMobile ? 14 : 16),
         decoration: BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppColors.border)),
-        child: Row(children: [
-          Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(
-                color: AppColors.navy.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10)),
-            child: const Icon(Icons.directions_bus, color: AppColors.navy, size: 20),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(bus['lineName'] ?? '--',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark)),
-              Text('${bus['busName'] ?? ''}  ${bus['busNumber'] ?? ''}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.sub)),
+        child: isMobile
+          ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                      color: AppColors.navy.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.directions_bus, color: AppColors.navy, size: 18),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(bus['lineName'] ?? '--',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                  Text('${bus['busName'] ?? ''}  ${bus['busNumber'] ?? ''}',
+                      style: const TextStyle(fontSize: 11, color: AppColors.sub)),
+                ])),
+              ]),
+              const SizedBox(height: 8),
+              Row(children: [
+                _badge(validationText, validationColor),
+                const SizedBox(width: 6),
+                _badge(driverStatusText, driverStatusColor),
+              ]),
+            ])
+          : Row(children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                    color: AppColors.navy.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.directions_bus, color: AppColors.navy, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(bus['lineName'] ?? '--',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                  Text('${bus['busName'] ?? ''}  ${bus['busNumber'] ?? ''}',
+                      style: const TextStyle(fontSize: 12, color: AppColors.sub)),
+                ]),
+              ),
+              _badge(validationText, validationColor),
+              const SizedBox(width: 8),
+              _badge(driverStatusText, driverStatusColor),
             ]),
-          ),
-          _badge(validationText, validationColor),
-          const SizedBox(width: 8),
-          _badge(driverStatusText, driverStatusColor),
-        ]),
       ),
     );
   }
@@ -340,12 +372,14 @@ class _BusDetailDialogState extends State<_BusDetailDialog> {
     final vidangeKm   = bus['lastVidangeKm'];
     final note        = bus['validationNote']     as String?;
 
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     return Dialog(
+      insetPadding: isMobile ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 700),
+        constraints: BoxConstraints(maxWidth: 700, maxHeight: isMobile ? MediaQuery.of(context).size.height * 0.9 : double.infinity),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(isMobile ? 16 : 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             // ── Header ──
             Row(children: [
@@ -368,19 +402,36 @@ class _BusDetailDialogState extends State<_BusDetailDialog> {
               Text('Documents', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.dark)),
             ]),
             const SizedBox(height: 12),
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: _docSection(
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: isMobile
+              ? [
+                  // Stack documents vertically on mobile
+                ]
+              : [
+                  Expanded(child: _docSection(
+                    label: 'Validation de ligne', url: ligneUrl,
+                    status: _ligneStatus, noteCtrl: _ligneNoteCtrl,
+                    onStatus: (s) => setState(() { _ligneStatus = s; _saved = false; }),
+                  )),
+                  const SizedBox(width: 16),
+                  Expanded(child: _docSection(
+                    label: 'Assurance', url: assuranceUrl,
+                    status: _assuranceStatus, noteCtrl: _assuranceNoteCtrl,
+                    onStatus: (s) => setState(() { _assuranceStatus = s; _saved = false; }),
+                  )),
+                ]),
+            if (isMobile) ...[
+              _docSection(
                 label: 'Validation de ligne', url: ligneUrl,
                 status: _ligneStatus, noteCtrl: _ligneNoteCtrl,
                 onStatus: (s) => setState(() { _ligneStatus = s; _saved = false; }),
-              )),
-              const SizedBox(width: 16),
-              Expanded(child: _docSection(
+              ),
+              const SizedBox(height: 16),
+              _docSection(
                 label: 'Assurance', url: assuranceUrl,
                 status: _assuranceStatus, noteCtrl: _assuranceNoteCtrl,
                 onStatus: (s) => setState(() { _assuranceStatus = s; _saved = false; }),
-              )),
-            ]),
+              ),
+            ],
 
             const SizedBox(height: 16),
             SizedBox(

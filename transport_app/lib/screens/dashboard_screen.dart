@@ -1198,7 +1198,25 @@ class _WeeklyRevenueCardState extends State<_WeeklyRevenueCard> {
             Row(children: [
               _buildQuickAction(
                 context, Icons.add, AppLocalizations.of(context).addLabel,
-                () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AddBusScreen())),
+                () async {
+                  final busService = BusService();
+                  final limit = await busService.getPlanLimit();
+                  final currentBuses = busService.latestBuses ?? [];
+                  if (limit != null && currentBuses.length >= limit) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Vous avez atteint le nombre maximum de bus pour votre forfait.'),
+                        backgroundColor: context.appOrange,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ));
+                    }
+                    return;
+                  }
+                  if (context.mounted) {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const AddBusScreen()));
+                  }
+                },
               ),
               SizedBox(width: 10),
               _buildQuickAction(

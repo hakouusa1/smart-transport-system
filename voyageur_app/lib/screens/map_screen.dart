@@ -12,6 +12,10 @@ import '../services/location_service.dart';
 import '../app_config.dart' as config;
 import '../services/route_service.dart';
 import '../services/notification_service.dart';
+import '../models/booking_model.dart';
+import '../services/booking_service.dart';
+import '../services/booking_monitor_service.dart';
+import '../services/booking_foreground_service.dart';
 import '../widgets/booking_button.dart';
 
 import '../theme/app_theme.dart';
@@ -27,7 +31,12 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final LocationService _locationService = LocationService();
   final BusService _busService = BusService();
+  final BookingService _bookingService = BookingService();
+  final BookingMonitorService _bookingMonitor = BookingMonitorService();
   final MapController _mapController = MapController();
+
+  StreamSubscription<Booking?>? _bookingStatusSub;
+  Booking? _myBooking;
 
   StreamSubscription<BusLocation?>? _busLocationSub;
   StreamSubscription<Position>? _myPositionSub;
@@ -103,9 +112,20 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _initLocation();
     _listenBus();
     _loadRoute();
-    _etaRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchETA());
+    _startBookingMonitor();
+    _etaRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) { if (_needEta()) _fetchETA(); });
     _busToMeEtaTimer = Timer.periodic(const Duration(seconds: 60), (_) {
       if (_needBusToMeEta()) _fetchBusToMeEta();
+    });
+  }
+
+  void _startBookingMonitor() {
+    _bookingStatusSub = _bookingService.getMyBooking(widget.bus.busId).listen((booking) {
+      if (!mounted) return;
+      setState(() => _myBooking = booking);
+      if (booking != null && booking.isWaiting) {
+        _bookingMonitor.startMonitoring(booking);
+      }
     });
   }
 
@@ -115,6 +135,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     _myPositionSub?.cancel();
     _etaRefreshTimer?.cancel();
     _busToMeEtaTimer?.cancel();
+    _bookingStatusSub?.cancel();
+    _bookingMonitor.stopMonitoring();
+    // Start foreground monitoring if user has an active booking
+    if (_myBooking != null && _myBooking!.isActive) {
+      BookingForegroundManager.start(_myBooking!.busId, _myBooking!.lineName);
+    }
     _moveAnim.dispose();
     _busMotionAnim.dispose();
     super.dispose();
@@ -750,6 +776,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                       if (live && bus.hasArrival) ...[
                         const SizedBox(height: 12),
                         BookingButton(bus: bus, etaMinutes: _etaMinutes),
+                      ],
+
+                      // ─ Boarding status indicator ─
+                      if (_myBooking != null && _myBooking!.isActive) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: _myBooking!.isBoarded
+                                ? context.appGreen.withValues(alpha: 0.08)
+                                : context.appOrange.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: _myBooking!.isBoarded
+                                  ? context.appGreen.withValues(alpha: 0.3)
+                                  : context.appOrange.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(children: [
+                            Icon(
+                              _myBooking!.isBoarded ? Icons.check_circle : Icons.hourglass_top,
+                              size: 16,
+                              color: _myBooking!.isBoarded ? context.appGreen : context.appOrange,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _myBooking!.isBoarded ? 'À bord du bus' : 'En attente du bus...',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: _myBooking!.isBoarded ? context.appGreen : context.appOrange,
+                              ),
+                            ),
+                          ]),
+                        ),
                       ],
 
                       Divider(height: 24, color: context.appBorder),

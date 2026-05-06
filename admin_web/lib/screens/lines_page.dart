@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../theme.dart';
 import '../services/admin_service.dart';
+import '../services/geocoding_service.dart';
 import '../data/wilayas_data.dart';
 
 class LinesPage extends StatelessWidget {
@@ -49,26 +51,44 @@ class LinesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
+    final pad = isMobile ? 16.0 : 28.0;
+
     return Padding(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(pad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            const Text('Lignes de transport', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.dark)),
-            const Spacer(),
-            FilledButton.icon(
+          if (isMobile) ...[
+            Text('Lignes de transport', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.dark)),
+            const SizedBox(height: 4),
+            const Text(
+              'Bidirectionnelle : aller et retour automatiquement.',
+              style: TextStyle(color: AppColors.sub, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: FilledButton.icon(
               onPressed: () => _createLine(context),
               icon: const Icon(Icons.add, size: 18),
               label: const Text('Nouvelle ligne'),
+            )),
+          ] else ...[
+            Row(children: [
+              const Text('Lignes de transport', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: AppColors.dark)),
+              const Spacer(),
+              FilledButton.icon(
+                onPressed: () => _createLine(context),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Nouvelle ligne'),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            const Text(
+              'Chaque ligne est bidirectionnelle : elle couvre le trajet aller et retour automatiquement.',
+              style: TextStyle(color: AppColors.sub, fontSize: 13),
             ),
-          ]),
-          const SizedBox(height: 6),
-          const Text(
-            'Chaque ligne est bidirectionnelle : elle couvre le trajet aller et retour automatiquement.',
-            style: TextStyle(color: AppColors.sub, fontSize: 13),
-          ),
-          const SizedBox(height: 24),
+          ],
+          const SizedBox(height: 20),
 
           Expanded(child: StreamBuilder<List<Map<String, dynamic>>>(
             stream: AdminService.getLines(),
@@ -89,6 +109,82 @@ class LinesPage extends StatelessWidget {
                 final stops = (line['stops'] as List?)?.cast<String>() ?? [];
                 final active = line['isActive'] ?? true;
                 final hasCoords = line['departureLat'] != null && line['arrivalLat'] != null;
+
+                if (isMobile) {
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      // Route name
+                      Row(children: [
+                        Container(
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: AppColors.navy.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.route_rounded, color: AppColors.navy, size: 18),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(
+                          '${line['departure'] ?? ''} ⇄ ${line['arrival'] ?? ''}',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark),
+                        )),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: (active ? AppColors.green : AppColors.sub).withValues(alpha: 0.1),
+                          ),
+                          child: Text(active ? 'Active' : 'Inactive',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: active ? AppColors.green : AppColors.sub)),
+                        ),
+                      ]),
+                      if (stops.isNotEmpty) ...[const SizedBox(height: 6),
+                        Text('Arrêts: ${stops.join(" → ")}', style: const TextStyle(fontSize: 11, color: AppColors.sub)),
+                      ],
+                      const SizedBox(height: 6),
+                      Row(children: [
+                        const Icon(Icons.payments_outlined, size: 12, color: AppColors.green),
+                        const SizedBox(width: 4),
+                        Text(
+                          (line['basePrice'] as num?) != null
+                              ? '${(line['basePrice'] as num).toStringAsFixed(0)} DA'
+                              : '---',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                            color: (line['basePrice'] as num?) != null ? AppColors.green : AppColors.orange),
+                        ),
+                        if (!hasCoords) ...[
+                          const SizedBox(width: 8),
+                          const Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.orange),
+                          const SizedBox(width: 2),
+                          const Text('GPS manquant', style: TextStyle(fontSize: 10, color: AppColors.orange)),
+                        ],
+                      ]),
+                      const SizedBox(height: 10),
+                      // Actions row
+                      Row(children: [
+                        _mobileAction(active ? Icons.pause_circle : Icons.play_circle,
+                          active ? AppColors.orange : AppColors.green, active ? 'Pause' : 'Activer',
+                          () => AdminService.updateLine(line['lineId'], {'isActive': !active})),
+                        const SizedBox(width: 6),
+                        _mobileAction(Icons.route, AppColors.green, 'Arrêts',
+                          () => _manageStopsPrices(context, line)),
+                        const SizedBox(width: 6),
+                        _mobileAction(Icons.edit_outlined, AppColors.blue, 'Modifier',
+                          () => _editLine(context, line)),
+                        const SizedBox(width: 6),
+                        _mobileAction(Icons.delete_outline, AppColors.red, 'Suppr.',
+                          () => _confirmDelete(context, line)),
+                      ]),
+                    ]),
+                  );
+                }
 
                 return Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -191,100 +287,142 @@ class LinesPage extends StatelessWidget {
       ),
     );
   }
+
+  Widget _mobileAction(IconData icon, Color color, String label, VoidCallback onTap) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: color)),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
 // LINE STOPS & PRICES MANAGEMENT DIALOG
 // ─────────────────────────────────────────────────────────────
+class _StopEntry {
+  String name;
+  double? lat;
+  double? lng;
+  final TextEditingController priceCtrl;
+  _StopEntry({required this.name, this.lat, this.lng, double priceToNext = 0.0})
+      : priceCtrl = TextEditingController(
+            text: priceToNext > 0 ? priceToNext.toStringAsFixed(0) : '');
+}
+
 class _LineStopsPricesDialog extends StatefulWidget {
   final Map<String, dynamic> line;
   const _LineStopsPricesDialog({required this.line});
-
   @override
   State<_LineStopsPricesDialog> createState() => _LineStopsPricesDialogState();
 }
 
 class _LineStopsPricesDialogState extends State<_LineStopsPricesDialog> {
-  List<Map<String, dynamic>> _lineStops = [];
-  List<Map<String, dynamic>> _segmentPrices = [];
-  List<Map<String, dynamic>> _allStops = [];
-  bool _loading = true;
+  final List<_StopEntry> _stops = [];
+  final _newNameCtrl = TextEditingController();
+  List<GeocodeResult> _suggestions = [];
+  Timer? _debounce;
+  bool _saving = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    try {
-      setState(() => _loading = true);
-
-      final stopsSnap = await AdminService.getStops().first;
-      _allStops = stopsSnap;
-
-      final lineStopsSnap = await AdminService.getLineStops(widget.line['lineId']).first;
-      _lineStops = lineStopsSnap..sort((a, b) => (a['orderIndex'] as int).compareTo(b['orderIndex'] as int));
-
-      final segmentsSnap = await AdminService.getSegmentPrices(widget.line['lineId']).first;
-      _segmentPrices = segmentsSnap;
-
-      setState(() => _loading = false);
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+    final raw = (widget.line['lineStopsData'] as List?)?.cast<Map>() ?? [];
+    for (final s in raw) {
+      _stops.add(_StopEntry(
+        name: s['name'] as String? ?? '',
+        lat: (s['lat'] as num?)?.toDouble(),
+        lng: (s['lng'] as num?)?.toDouble(),
+        priceToNext: (s['priceToNext'] as num?)?.toDouble() ?? 0.0,
+      ));
     }
   }
 
-  Future<void> _addStop(String stopId) async {
-    final nextOrder = _lineStops.isEmpty ? 0 : _lineStops.last['orderIndex'] + 1;
-    await AdminService.addStopToLine(
-      lineId: widget.line['lineId'],
-      stopId: stopId,
-      orderIndex: nextOrder,
-    );
-    await _loadData();
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _newNameCtrl.dispose();
+    for (final s in _stops) { s.priceCtrl.dispose(); }
+    super.dispose();
   }
 
-  Future<void> _removeStop(String lineStopId) async {
-    await AdminService.removeStopFromLine(widget.line['lineId'], lineStopId);
-    await _loadData();
+  void _onSearchChanged(String val) {
+    _debounce?.cancel();
+    if (val.trim().length < 2) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    _debounce = Timer(const Duration(milliseconds: 400), () async {
+      final results = await GeocodingService.suggestPlaces(val.trim());
+      if (mounted) setState(() => _suggestions = results);
+    });
   }
 
-  Future<void> _setPrice(String fromStopId, String toStopId, double price) async {
-    await AdminService.setSegmentPrice(
-      lineId: widget.line['lineId'],
-      fromStopId: fromStopId,
-      toStopId: toStopId,
-      price: price,
-    );
-    await _loadData();
+  void _addStopFromSuggestion(GeocodeResult result) {
+    final shortName = result.resolvedName.split(',').first.trim();
+    setState(() {
+      _stops.add(_StopEntry(name: shortName, lat: result.lat, lng: result.lng));
+      _newNameCtrl.clear();
+      _suggestions = [];
+    });
   }
 
-  String _getStopName(String stopId) {
-    final stop = _allStops.firstWhere((s) => s['id'] == stopId, orElse: () => {'name': stopId});
-    return stop['name'] ?? stopId;
+  void _addStop() {
+    final name = _newNameCtrl.text.trim();
+    if (name.isEmpty) return;
+    setState(() {
+      _stops.add(_StopEntry(name: name));
+      _newNameCtrl.clear();
+      _suggestions = [];
+    });
   }
 
-  double? _getSegmentPrice(String fromStopId, String toStopId) {
-    final segment = _segmentPrices.firstWhere(
-      (s) => s['fromStopId'] == fromStopId && s['toStopId'] == toStopId,
-      orElse: () => {},
-    );
-    return segment['price']?.toDouble();
+  void _removeStop(int index) {
+    setState(() {
+      _stops[index].priceCtrl.dispose();
+      _stops.removeAt(index);
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _error = null; });
+    try {
+      final data = _stops.map((s) => {
+        'name': s.name,
+        'priceToNext': double.tryParse(s.priceCtrl.text.replaceAll(',', '.')) ?? 0.0,
+        if (s.lat != null) 'lat': s.lat,
+        if (s.lng != null) 'lng': s.lng,
+      }).toList();
+      await AdminService.updateLine(widget.line['lineId'], {'lineStopsData': data});
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() { _error = e.toString(); _saving = false; });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     return Dialog(
+      insetPadding: isMobile ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 800, maxHeight: 600),
+        constraints: BoxConstraints(maxWidth: 600, maxHeight: isMobile ? MediaQuery.of(context).size.height * 0.85 : 700),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(isMobile ? 16 : 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -292,159 +430,172 @@ class _LineStopsPricesDialogState extends State<_LineStopsPricesDialog> {
                 const Icon(Icons.route, color: AppColors.navy, size: 24),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Gérer les arrêts et prix', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
-                  Text('${widget.line['name']}', style: const TextStyle(fontSize: 14, color: AppColors.sub)),
+                  const Text('Gérer les arrêts et prix',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.dark)),
+                  Text('${widget.line['name']}',
+                      style: const TextStyle(fontSize: 13, color: AppColors.sub)),
                 ])),
                 IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
               ]),
               const SizedBox(height: 20),
 
-              if (_loading)
-                const Expanded(child: Center(child: CircularProgressIndicator()))
-              else if (_error != null)
-                Expanded(child: Center(child: Text('Erreur: $_error', style: const TextStyle(color: AppColors.red))))
-              else
-                Expanded(child: _buildContent()),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newNameCtrl,
+                    decoration: InputDecoration(
+                      hintText: 'Rechercher un lieu (ex: Djebahia, Bouira...)',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onChanged: _onSearchChanged,
+                    onSubmitted: (_) => _addStop(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _addStop,
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Ajouter'),
+                ),
+              ]),
+
+              if (_suggestions.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.card,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 3))],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _suggestions.map((r) {
+                      final parts = r.resolvedName.split(',');
+                      final main = parts.first.trim();
+                      final sub = parts.length > 1 ? parts.sublist(1).join(',').trim() : '';
+                      return InkWell(
+                        onTap: () => _addStopFromSuggestion(r),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          child: Row(children: [
+                            const Icon(Icons.location_on, size: 16, color: AppColors.navy),
+                            const SizedBox(width: 10),
+                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(main, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.dark)),
+                              if (sub.isNotEmpty)
+                                Text(sub, style: const TextStyle(fontSize: 11, color: AppColors.sub), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            ])),
+                          ]),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 16),
+
+              Expanded(
+                child: _stops.isEmpty
+                    ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.location_on_outlined, size: 48, color: AppColors.border),
+                        SizedBox(height: 8),
+                        Text('Aucun arrêt ajouté', style: TextStyle(color: AppColors.sub)),
+                      ]))
+                    : ListView.builder(
+                        itemCount: _stops.length,
+                        itemBuilder: (_, i) {
+                          final stop = _stops[i];
+                          final isLast = i == _stops.length - 1;
+                          return Column(children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.card,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Row(children: [
+                                Container(
+                                  width: 30, height: 30,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.navy.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Center(child: Text('${i + 1}',
+                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.navy))),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text(stop.name,
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark))),
+                                IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: AppColors.red, size: 18),
+                                  onPressed: () => _removeStop(i),
+                                ),
+                              ]),
+                            ),
+                            if (!isLast) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: AppColors.green.withValues(alpha: 0.05),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.green.withValues(alpha: 0.2)),
+                                ),
+                                child: Row(children: [
+                                  const Icon(Icons.arrow_downward, size: 14, color: AppColors.green),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(
+                                    '${stop.name} → ${_stops[i + 1].name}',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.dark),
+                                  )),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 90,
+                                    child: TextField(
+                                      controller: stop.priceCtrl,
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        hintText: '0',
+                                        suffixText: 'DA',
+                                        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                                      ),
+                                    ),
+                                  ),
+                                ]),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                          ]);
+                        },
+                      ),
+              ),
+
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(_error!, style: const TextStyle(color: AppColors.red, fontSize: 12)),
+              ],
+              const SizedBox(height: 16),
+              Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annuler')),
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _saving ? null : _save,
+                  child: _saving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Enregistrer'),
+                ),
+              ]),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildContent() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(children: [
-          const Text('Ajouter un arrêt:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(width: 12),
-          Expanded(child: _buildStopDropdown()),
-        ]),
-        const SizedBox(height: 20),
-
-        Expanded(child: ListView.builder(
-          itemCount: _lineStops.length,
-          itemBuilder: (context, index) {
-            final lineStop = _lineStops[index];
-            final stopId = lineStop['stopId'] as String;
-            final stopName = _getStopName(stopId);
-
-            return Column(children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(children: [
-                  Container(
-                    width: 32, height: 32,
-                    decoration: BoxDecoration(
-                      color: AppColors.navy.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Center(child: Text('${index + 1}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.navy))),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(stopName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.dark))),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: AppColors.red, size: 18),
-                    onPressed: () => _removeStop(lineStop['id']),
-                    tooltip: 'Supprimer cet arrêt',
-                  ),
-                ]),
-              ),
-
-              if (index < _lineStops.length - 1) ...[
-                const SizedBox(height: 8),
-                _buildSegmentPriceEditor(index),
-                const SizedBox(height: 12),
-              ],
-            ]);
-          },
-        )),
-      ],
-    );
-  }
-
-  Widget _buildStopDropdown() {
-    final availableStops = _allStops.where((stop) {
-      final stopId = stop['id'] as String;
-      return !_lineStops.any((ls) => ls['stopId'] == stopId);
-    }).toList();
-
-    if (availableStops.isEmpty) {
-      return const Text('Tous les arrêts sont déjà ajoutés', style: TextStyle(color: AppColors.sub, fontSize: 12));
-    }
-
-    return DropdownButton<String>(
-      hint: const Text('Sélectionner un arrêt'),
-      items: availableStops.map((stop) {
-        return DropdownMenuItem<String>(
-          value: stop['id'],
-          child: Text(stop['name'] ?? stop['id']),
-        );
-      }).toList(),
-      onChanged: (stopId) {
-        if (stopId != null) _addStop(stopId);
-      },
-    );
-  }
-
-  Widget _buildSegmentPriceEditor(int stopIndex) {
-    final fromStop = _lineStops[stopIndex];
-    final toStop = _lineStops[stopIndex + 1];
-    final fromStopId = fromStop['stopId'] as String;
-    final toStopId = toStop['stopId'] as String;
-    final currentPrice = _getSegmentPrice(fromStopId, toStopId);
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.green.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.green.withValues(alpha: 0.2)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const Icon(Icons.arrow_downward, color: AppColors.green, size: 16),
-          const SizedBox(width: 8),
-          const Text('Prix du segment', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.green)),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(child: Text('${_getStopName(fromStopId)} → ${_getStopName(toStopId)}',
-              style: const TextStyle(fontSize: 13, color: AppColors.dark))),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 100,
-            child: TextFormField(
-              initialValue: currentPrice?.toStringAsFixed(2) ?? '',
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                hintText: '0.00',
-                suffixText: 'DA',
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-              ),
-              onFieldSubmitted: (value) {
-                final price = double.tryParse(value);
-                if (price != null && price > 0) {
-                  _setPrice(fromStopId, toStopId, price);
-                }
-              },
-            ),
-          ),
-        ]),
-        if (currentPrice != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text('Prix actuel: ${currentPrice.toStringAsFixed(2)} DA',
-                style: const TextStyle(fontSize: 11, color: AppColors.sub)),
-          ),
-      ]),
     );
   }
 }
@@ -502,7 +653,9 @@ class _LineFormDialogState extends State<_LineFormDialog> {
   }
 
   Future<void> _submit() async {
-    if (_departureWilaya == null || _arrivalWilaya == null) return;
+    final dep = _departureWilaya;
+    final arr = _arrivalWilaya;
+    if (dep == null || arr == null) return;
 
     final priceText = _basePriceCtrl.text.trim().replaceAll(',', '.');
     final basePrice = double.tryParse(priceText);
@@ -522,27 +675,27 @@ class _LineFormDialogState extends State<_LineFormDialog> {
 
     if (_isEditing) {
       await AdminService.updateLine(widget.line!['lineId'], {
-        'departure': _departureWilaya!.name,
-        'arrival': _arrivalWilaya!.name,
-        'name': '${_departureWilaya!.name} - ${_arrivalWilaya!.name}',
+        'departure': dep.name,
+        'arrival': arr.name,
+        'name': '${dep.name} - ${arr.name}',
         'stops': stops,
         'basePrice': basePrice,
-        'departureLat': _departureWilaya!.lat,
-        'departureLng': _departureWilaya!.lng,
-        'arrivalLat': _arrivalWilaya!.lat,
-        'arrivalLng': _arrivalWilaya!.lng,
+        'departureLat': dep.lat,
+        'departureLng': dep.lng,
+        'arrivalLat': arr.lat,
+        'arrivalLng': arr.lng,
       });
     } else {
       await AdminService.createLine(
-        departure: _departureWilaya!.name,
-        arrival: _arrivalWilaya!.name,
+        departure: dep.name,
+        arrival: arr.name,
         basePrice: basePrice,
         stops: stops,
         adminId: FirebaseAuth.instance.currentUser?.uid ?? '',
-        departureLat: _departureWilaya!.lat,
-        departureLng: _departureWilaya!.lng,
-        arrivalLat: _arrivalWilaya!.lat,
-        arrivalLng: _arrivalWilaya!.lng,
+        departureLat: dep.lat,
+        departureLng: dep.lng,
+        arrivalLat: arr.lat,
+        arrivalLng: arr.lng,
       );
     }
     if (mounted) Navigator.pop(context);
@@ -552,13 +705,15 @@ class _LineFormDialogState extends State<_LineFormDialog> {
   Widget build(BuildContext context) {
     final canSubmit = _departureWilaya != null && _arrivalWilaya != null && !_loading;
 
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     return AlertDialog(
+      insetPadding: isMobile ? const EdgeInsets.all(16) : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(
         _isEditing ? 'Modifier la ligne' : 'Créer une ligne',
         style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.dark),
       ),
-      content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      content: SizedBox(width: isMobile ? double.infinity : 460, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
 
         _WilayaPickerField(
           label: 'Wilaya de départ *',
@@ -730,10 +885,12 @@ class _WilayaSearchDialogState extends State<_WilayaSearchDialog> {
           w.code.toString() == _query;
     }).toList();
 
+    final isMobile = MediaQuery.of(context).size.width <= 600;
     return Dialog(
+      insetPadding: isMobile ? const EdgeInsets.all(12) : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 560),
+        constraints: BoxConstraints(maxWidth: 400, maxHeight: isMobile ? MediaQuery.of(context).size.height * 0.7 : 560),
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

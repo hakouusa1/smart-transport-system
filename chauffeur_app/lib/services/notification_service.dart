@@ -46,7 +46,7 @@ class NotificationService {
 
     // 5. Handle FCM messages in foreground → show as local notification
     FirebaseMessaging.onMessage.listen((message) {
-      final title = message.notification?.title ?? 'Voyageur';
+      final title = message.notification?.title ?? 'Chauffeur';
       final body = message.notification?.body ?? '';
       showNotification(title: title, body: body);
     });

@@ -29,8 +29,8 @@ class NotificationService {
 
     // Create notification channel (Android)
     const channel = AndroidNotificationChannel(
-      'bus_tracking',
-      'Suivi de bus',
+      'bus_channel',
+      'Notifications Bus',
       description: 'Notifications de suivi de bus en temps réel',
       importance: Importance.high,
     );
@@ -85,8 +85,8 @@ class NotificationService {
     int id = 0,
   }) async {
     const androidDetails = AndroidNotificationDetails(
-      'bus_tracking',
-      'Suivi de bus',
+      'bus_channel',
+      'Notifications Bus',
       channelDescription: 'Notifications de suivi de bus en temps réel',
       importance: Importance.high,
       priority: Priority.high,

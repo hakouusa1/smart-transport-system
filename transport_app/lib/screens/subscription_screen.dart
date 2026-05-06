@@ -3,16 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import '../l10n/app_localizations.dart';
 import '../models/subscription_plan.dart';
+import '../services/subscription_plan_service.dart';
 import '../services/supabase_storage_service.dart';
 import '../theme_notifier.dart';
 import '../widgets/bus_loading_indicator.dart';
 import '../widgets/notif_listener.dart';
 import 'main_screen.dart';
+import 'reduce_buses_screen.dart';
 
 
 
@@ -41,6 +42,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   StreamSubscription<DocumentSnapshot>? _statusSub;
   bool _navigated = false;
 
+  List<SubscriptionPlan> _plans = SubscriptionPlan.defaults;
+
   // Receipt upload state
   File? _receiptFile;
   Uint8List? _receiptBytes;
@@ -48,6 +51,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   String _ccpAccount   = '0000000123 45';
   String _baridimobRip = '007 99999 1234567890 12';
+
+  SubscriptionPlan get _currentPlan => _plans.firstWhere(
+        (p) => p.id == _planId || p.name.toLowerCase() == _planId.toLowerCase(),
+        orElse: () => _plans.isNotEmpty ? _plans.first : SubscriptionPlan.defaults.first,
+      );
 
   @override
   void initState() {
@@ -60,7 +68,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       _loadStatus();
     }
     _loadPaymentConfig();
+    _loadPlans();
     _listenForApproval();
+  }
+
+  Future<void> _loadPlans() async {
+    final plans = await SubscriptionPlanService.fetchPlans();
+    if (mounted) setState(() => _plans = plans);
   }
 
   Future<void> _loadPaymentConfig() async {
@@ -99,14 +113,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         if (canNavigate) {
           _navigated = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(
-                    builder: (_) =>
-                        const NotifListener(child: MainScreen())),
-                (route) => false,
-              );
-            }
+            if (mounted) _navigateAfterActivation(uid, data);
           });
         }
       } else if (mounted && newStatus != _status) {
@@ -117,6 +124,69 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         });
       }
     });
+  }
+
+  /// After the plan becomes active, check if the user has more buses than the
+  /// new plan allows. If so, redirect to ReduceBusesScreen instead of MainScreen.
+  Future<void> _navigateAfterActivation(
+      String uid, Map<String, dynamic> userData) async {
+    if (!mounted) return;
+
+    try {
+      final planId =
+          ((userData['subscription'] as String?) ?? 'starter').toLowerCase();
+
+      int maxBuses = 0;
+      String planName = planId;
+
+      final planDoc = await FirebaseFirestore.instance
+          .collection('subscription_plans')
+          .doc(planId)
+          .get();
+
+      if (planDoc.exists) {
+        final p = planDoc.data()!;
+        maxBuses = (p['maxBuses'] as num?)?.toInt() ?? 0;
+        planName = (p['name'] as String?) ?? planId;
+      } else {
+        final fallback = _plans.firstWhere(
+          (p) => p.id == planId,
+          orElse: () => _plans.isNotEmpty ? _plans.first : SubscriptionPlan.defaults.first,
+        );
+        maxBuses = fallback.maxBuses;
+        planName = fallback.name;
+      }
+
+      if (maxBuses > 0 && mounted) {
+        final busSnap = await FirebaseFirestore.instance
+            .collection('buses')
+            .where('ownerId', isEqualTo: uid)
+            .get();
+
+        if (busSnap.docs.length > maxBuses && mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(
+              builder: (_) => ReduceBusesScreen(
+                planLimit: maxBuses,
+                planName: planName,
+              ),
+            ),
+            (route) => false,
+          );
+          return;
+        }
+      }
+    } catch (_) {
+      // On any error fall through to MainScreen
+    }
+
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(
+            builder: (_) => const NotifListener(child: MainScreen())),
+        (route) => false,
+      );
+    }
   }
 
   @override
@@ -208,7 +278,29 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     if (mounted) setState(() { _isSubmitting = true; _isUploading = true; });
 
     try {
-      // 1. Upload to Supabase payment_receipts bucket
+      // 1. Rate-limit check: max 3 submissions per 24 hours
+      final cutoff = Timestamp.fromDate(
+          DateTime.now().subtract(const Duration(hours: 24)));
+      final recentSnap = await FirebaseFirestore.instance
+          .collection('payment_requests')
+          .where('ownerId', isEqualTo: uid)
+          .where('createdAt', isGreaterThan: cutoff)
+          .get();
+      if (recentSnap.size >= 3) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(AppLocalizations.of(context).tooManyRequests),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: context.appOrange,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            margin: const EdgeInsets.all(16),
+          ));
+        }
+        return;
+      }
+
+      // 2. Upload to Supabase payment_receipts bucket
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final storagePath = '$uid/receipt_$timestamp.jpg';
       final url = await SupabaseStorageService.uploadReceipt(
@@ -216,12 +308,30 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
         storagePath,
       );
 
-      // 2. Call rate-limited Cloud Function
-      await FirebaseFunctions.instance.httpsCallable('submitPaymentRequest').call({
+      // 3. Atomic Firestore write: create payment_request + update user status
+      final db = FirebaseFirestore.instance;
+      final reqRef = db.collection('payment_requests').doc();
+      final now = Timestamp.now();
+      final batch = db.batch();
+
+      batch.set(reqRef, {
+        'id': reqRef.id,
+        'ownerId': uid,
         'planId': _planId,
         'receiptUrl': url,
         'refNumber': refNum,
+        'status': 'pending',
+        'createdAt': now,
+        'updatedAt': now,
       });
+
+      batch.update(db.collection('users').doc(uid), {
+        'subscriptionStatus': 'pending_verification',
+        'subscription': _planId,
+        'updatedAt': now,
+      });
+
+      await batch.commit();
 
       if (mounted) {
         setState(() => _status = 'pending_verification');
@@ -230,19 +340,6 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
           backgroundColor: context.appGreen,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          margin: const EdgeInsets.all(16),
-        ));
-      }
-    } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        final isRateLimited = e.code == 'resource-exhausted';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(isRateLimited ? l10n.tooManyRequests : '${l10n.uploadError}: ${e.message}'),
-          duration: const Duration(seconds: 4),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: context.appOrange,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           margin: const EdgeInsets.all(16),
         ));
@@ -274,7 +371,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Widget _buildSubscribe() {
     final l10n = AppLocalizations.of(context);
-    final plan = SubscriptionPlan.getById(_planId);
+    final plan = _currentPlan;
 
     return Scaffold(
       backgroundColor: context.appBg,
@@ -313,7 +410,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
             const SizedBox(height: 16),
             Text(l10n.planNameFmt(plan.name), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.white)),
             const SizedBox(height: 6),
-            Text('${plan.price} ${l10n.perMonth}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9))),
+            Text('${plan.price} / ${plan.durationDays} j', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9))),
           ]),
         ),
         const SizedBox(height: 24),
@@ -575,6 +672,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
 
   Widget _buildPending() {
     final l10n = AppLocalizations.of(context);
+    final isChanging = widget.isChangingPlan;
     return Scaffold(backgroundColor: context.appBg, body: SafeArea(child: Stack(children: [
       Center(child: Padding(
         padding: const EdgeInsets.all(32),
@@ -585,15 +683,37 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
           const SizedBox(height: 24),
           Text(l10n.pendingVerificationTitle, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: context.appDark)),
           const SizedBox(height: 12),
-          Text(l10n.pendingVerificationBody,
-            textAlign: TextAlign.center, style: TextStyle(color: context.appSub, fontSize: 14, height: 1.5)),
+          Text(
+            isChanging ? l10n.pendingVerificationChangePlanBody : l10n.pendingVerificationBody,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: context.appSub, fontSize: 14, height: 1.5),
+          ),
           const SizedBox(height: 32),
-          FilledButton.icon(onPressed: () { setState(() => _loading = true); _loadStatus(); },
-            icon: const Icon(Icons.refresh, size: 18), label: Text(l10n.checkStatusButton),
-            style: FilledButton.styleFrom(backgroundColor: context.appPurple)),
-          const SizedBox(height: 16),
-          TextButton(onPressed: () => FirebaseAuth.instance.signOut(),
-            child: Text(l10n.logoutTitle, style: TextStyle(color: context.appSub))),
+          if (isChanging) ...[
+            SizedBox(width: double.infinity, height: 52,
+              child: FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const NotifListener(child: MainScreen())),
+                    (route) => false,
+                  );
+                },
+                icon: const Icon(Icons.home_rounded, size: 20),
+                label: Text(l10n.goToHome, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                style: FilledButton.styleFrom(
+                  backgroundColor: context.appPurple,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                ),
+              ),
+            ),
+          ] else ...[
+            FilledButton.icon(onPressed: () { setState(() => _loading = true); _loadStatus(); },
+              icon: const Icon(Icons.refresh, size: 18), label: Text(l10n.checkStatusButton),
+              style: FilledButton.styleFrom(backgroundColor: context.appPurple)),
+            const SizedBox(height: 16),
+            TextButton(onPressed: () => FirebaseAuth.instance.signOut(),
+              child: Text(l10n.logoutTitle, style: TextStyle(color: context.appSub))),
+          ],
         ]),
       )),
     ])));

@@ -352,17 +352,28 @@ class _AddBusScreenState extends State<AddBusScreen> {
   // ============================================
   // CREATE BUS + DRIVER
   // ============================================
-  static const _planLimits = {'starter': 3, 'pro': 10};
+  // Fallback limits if the plan doc is missing from Firestore.
+  static const _fallbackPlanLimits = {'starter': 3, 'pro': 10};
 
   Future<void> _createBusWithDriver(AppLocalizations l10n) async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) throw l10n.errorNotLoggedIn;
     final ownerUid = currentUser.uid;
 
-    // Enforce subscription plan bus limit
+    // Enforce subscription plan bus limit using the live plan doc.
     final userDoc = await _firestore.collection('users').doc(ownerUid).get();
-    final plan = (userDoc.data()?['subscription'] as String? ?? 'starter').toLowerCase();
-    final limit = _planLimits[plan]; // null = enterprise (unlimited)
+    final planId = (userDoc.data()?['subscription'] as String? ?? 'starter').toLowerCase();
+    int? limit;
+    String planName = planId.isEmpty ? 'Starter' : '${planId[0].toUpperCase()}${planId.substring(1)}';
+    final planDoc = await _firestore.collection('subscription_plans').doc(planId).get();
+    if (planDoc.exists) {
+      final data = planDoc.data() ?? {};
+      final maxBuses = (data['maxBuses'] as num?)?.toInt() ?? 0;
+      limit = maxBuses > 0 ? maxBuses : null;
+      planName = (data['name'] as String?) ?? planName;
+    } else {
+      limit = _fallbackPlanLimits[planId];
+    }
     if (limit != null) {
       final countSnap = await _firestore
           .collection('buses')
@@ -371,7 +382,6 @@ class _AddBusScreenState extends State<AddBusScreen> {
           .get();
       final current = countSnap.count ?? 0;
       if (current >= limit) {
-        final planName = plan[0].toUpperCase() + plan.substring(1);
         throw l10n.errorBusLimitFmt(planName, limit);
       }
     }
